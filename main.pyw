@@ -3,6 +3,7 @@ from PIL import Image, ImageTk
 from tkinter import filedialog
 from tkinter import messagebox
 from tkinter import ttk
+from threading import Thread
 import calendar
 import zipfile
 import gzip
@@ -15,6 +16,9 @@ class Main:
     def __init__(self):
         self.root = Tk()
         self.root.title("inspecteur de logs")
+        try: self.root.iconbitmap("icon.ico")
+        except: pass
+        self.root.resizable(width=False, height=False)
 
         self.frame_game_dir = Frame(self.root)  # Menu de sélection du dossier de jeu
         self.frame_game_dir.grid(row=1, column=1)
@@ -26,8 +30,8 @@ class Main:
         Button(self.frame_game_dir, text="...", command=self.select_game_dir, relief = RIDGE).grid(row=2, column=2)
 
         def option_calendar():
-            self.update_log_data()
-            self.update_calendar()
+            if self.update_log_data() != -1:
+                self.update_calendar()
 
         self.frame_button_game_dir_action = Frame(self.frame_game_dir)
         self.frame_button_game_dir_action.grid(row = 3, column = 1, columnspan = 2)
@@ -49,6 +53,21 @@ class Main:
 
         self.frame_calendar_month_panel = Frame(self.frame_calendar_log)
         self.frame_calendar_month_panel.columnconfigure(2, weight = 1)
+
+        self.month_id_to_name = {
+            1: "Janvier",
+            2: "Février",
+            3: "Mars",
+            4: "Avril",
+            5: "Mai",
+            6: "Juin",
+            7: "Juillet",
+            8: "Août",
+            9: "Septembre",
+            10: "Octobre",
+            11: "Novembre",
+            12: "Décembre"
+        }
 
         self.button_calendar_month = Button(self.frame_calendar_month_panel, text="MONTH", font=("System", 24), relief = FLAT)
         self.button_calendar_month.grid(row=2, column=2, sticky = "NEWS")
@@ -99,8 +118,31 @@ class Main:
 
         self.text_log_read_data = Text(self.frame_log_read, width = 100, height = 30, yscrollcommand = self.scrollbar_text_log_read.set)
         self.text_log_read_data.grid(row=3, column=1,sticky = "NEWS")
+
         self.text_log_read_data.tag_config('chat_message', background="gray10", foreground="white")
-        self.text_log_read_data.tag_config('server_connection', background="red", foreground="white")
+        self.text_log_read_data.tag_config('server_connection', background="red", foreground="white", font=("System", 16))
+
+        self.text_log_read_data.tag_config('§0', background="gray30", foreground="black")
+        self.text_log_read_data.tag_config('§1', background="gray10", foreground="darkblue")
+        self.text_log_read_data.tag_config('§2', background="gray10", foreground="darkgreen")
+        self.text_log_read_data.tag_config('§3', background="gray10", foreground="turquoise")
+        self.text_log_read_data.tag_config('§4', background="gray10", foreground="darkred")
+        self.text_log_read_data.tag_config('§5', background="gray10", foreground="darkviolet")
+        self.text_log_read_data.tag_config('§6', background="gray10", foreground="gold")
+        self.text_log_read_data.tag_config('§7', background="gray10", foreground="lightgray")
+        self.text_log_read_data.tag_config('§8', background="gray10", foreground="gray")
+        self.text_log_read_data.tag_config('§9', background="gray10", foreground="royalblue")
+        self.text_log_read_data.tag_config('§a', background="gray10", foreground="lime")
+        self.text_log_read_data.tag_config('§b', background="gray10", foreground="cyan")
+        self.text_log_read_data.tag_config('§c', background="gray10", foreground="red")
+        self.text_log_read_data.tag_config('§d', background="gray10", foreground="magenta")
+        self.text_log_read_data.tag_config('§e', background="gray10", foreground="yellow")
+        self.text_log_read_data.tag_config('§l', font=("System", 16, "bold"))
+        self.text_log_read_data.tag_config('§m', overstrike = True)
+        self.text_log_read_data.tag_config('§n', underline = True)
+        self.text_log_read_data.tag_config('§o', font=("System italic", 16))
+        self.text_log_read_data.tag_config('§r', background="gray10", foreground="white", font=("System", 16), overstrike = False, underline = False)
+
 
         self.scrollbar_text_log_read.config(command=self.text_log_read_data.yview)
 
@@ -138,6 +180,8 @@ class Main:
         self.latest_log_month = -1
         self.oldest_log_year = -1
         self.oldest_log_month = -1
+        self.max_log_total_day = -1
+        self.max_log_total_month = -1
         self.path = self.entry_game_dir.get()
 
         if not(os.path.exists(self.path + "\\logs\\")):
@@ -155,6 +199,8 @@ class Main:
                 if year in self.log_metadata:
                     self.log_metadata[year][month][day] += 1
                     self.log_metadata[year][month]["total"] += 1
+                    if self.max_log_total_day < self.log_metadata[year][month][day]: self.max_log_total_day = self.log_metadata[year][month][day]
+                    if self.max_log_total_month < self.log_metadata[year][month]["total"]: self.max_log_total_month = self.log_metadata[year][month]["total"]
                 else:
                     _day_dict = {"total": 0}
                     _month_dict = {}
@@ -183,15 +229,17 @@ class Main:
 
         if not(year): year = self.latest_log_year
         if not(month): month = self.latest_log_month
-        day_offset, day_number = calendar.monthrange(year, month)
+        try: day_offset, day_number = calendar.monthrange(year, month)
+        except calendar.IllegalMonthError:
+            return -1
 
         self.label_calendar_year.config(text = str(year))
-        self.button_calendar_month.config(text = str(month))
+        self.button_calendar_month.config(text = self.month_id_to_name[month])
 
-        if year > self.oldest_log_year: command = lambda: self.update_calendar(year = year - 1, month = month, mode = mode)
+        if year > self.oldest_log_year: command = lambda: self.update_calendar(year = year - 1, month = 12, mode = mode)
         else: command = lambda: "pass"
         self.button_calendar_year_before.config(command = command)
-        if year < self.latest_log_year: command = lambda: self.update_calendar(year = year + 1, month = month, mode = mode)
+        if year < self.latest_log_year: command = lambda: self.update_calendar(year = year + 1, month = 1, mode = mode)
         else: command = lambda: "pass"
         self.button_calendar_year_after.config(command = command)
         if month > 1: command = lambda: self.update_calendar(year = year, month = month - 1)
@@ -215,7 +263,7 @@ class Main:
                 if not(year in self.log_metadata):
                     bg = "lightgray"
                 elif self.log_metadata[year][month][day] > 0:
-                    bg = "cyan"  # bg = "#0000%s" % hex(round(self.log_metadata[year][month][day])[2:].zfill(2)
+                    bg = "#00%sFF" % hex(255 - (self.log_metadata[year][month][day] * 128 // self.max_log_total_day))[2:].zfill(2)
                     command = lambda year=year, month=month, day=day: self.update_day(year, month, day)
                 else:
                     bg = "lightgray"
@@ -230,7 +278,8 @@ class Main:
             for index, month_button in enumerate(self.dict_button_month_calendar):
                 month_button.grid(row=index//3,column=index%3)
                 if not (year in self.log_metadata): bg = "lightgray"
-                elif self.log_metadata[year][index + 1]["total"] > 0: bg = "cyan"
+                elif self.log_metadata[year][index + 1]["total"] > 0:
+                    bg = "#00%sFF" % hex(255 - (self.log_metadata[year][index + 1]["total"] * 128 // self.max_log_total_month))[2:].zfill(2)
                 else: bg = "lightgray"
                 month_button.config(bg = bg, command = lambda month = index + 1: self.update_calendar(year = year, month = month, mode = "day"))
 
@@ -238,6 +287,11 @@ class Main:
         """Met à jour l'interface affichant les différents logs"""
         for button in self.dict_button_day_log: button.destroy()
         self.canvas_day_log_historic.delete(ALL)
+        canvas_height, canvas_width = self.canvas_day_log_historic.winfo_height(), self.canvas_day_log_historic.winfo_width()
+
+        step_time_offset = canvas_height / 24
+        for step in range(1, 24 + 1):
+            self.canvas_day_log_historic.create_line(0, step_time_offset * step, canvas_width, step_time_offset * step, fill = "gray65")
 
         self.frame_day_log.grid(row = 1, column = 2, rowspan = 2)
         self.label_day_total_log.config(text = "fichier logs trouvé : %i" % self.log_metadata[year][month][day])
@@ -250,19 +304,20 @@ class Main:
             try:
                 with gzip.open(file) as log_file:
                     log_line = log_file.readlines()
-                first_time = log_line[0][1:9].decode()
-                last_time = log_line[-1][1:9].decode()
+                first_time = log_line[0][1:9].decode("cp1252")
+                for index in range(1, len(log_line)):
+                    last_time_line = log_line[-index].decode("cp1252", errors = "ignore")
+                    if last_time_line[0] == "[" and last_time_line[9] == "]":
+                        last_time = last_time_line[1:9]
+                        break
 
                 first_hour, first_min, first_sec = (int(x) for x in first_time.split(":"))
                 first_timestamp = first_hour * 3600 + first_min * 60 + first_sec
                 last_hour, last_min, last_sec = (int(x) for x in last_time.split(":"))
                 last_timestamp = last_hour * 3600 + last_min * 60 + last_sec
 
-                canvas_height, canvas_width = self.canvas_day_log_historic.winfo_height(), self.canvas_day_log_historic.winfo_width()
-
                 first_time_offset = first_timestamp * canvas_height / (24 * 3600)
                 last_time_offset = last_timestamp * canvas_height / (24 * 3600)
-                median_time_offset = (first_time_offset + last_time_offset) / 2
 
                 command = lambda e=None, f=file,y=year,m=month,d=day,h=first_hour,mi=first_min,s=first_sec,lh=last_hour,lmi=last_min,ls=last_sec: self.update_log(f,y,m,d,h,mi,s,lh,lmi,ls)
                 self.dict_button_day_log[-1].config(command = command)
@@ -270,12 +325,11 @@ class Main:
                 log_canvas_ID = self.canvas_day_log_historic.create_rectangle(0, first_time_offset, canvas_width, last_time_offset, fill="cyan", width=1)
                 self.canvas_day_log_historic.tag_bind(log_canvas_ID, "<Button-1>", command)
 
-                if last_time_offset - first_time_offset > canvas_height / 20:
-                    log_text_canvas_ID = self.canvas_day_log_historic.create_text(canvas_width / 2, median_time_offset, text = first_time, font = ("System", 16))
+                if last_time_offset - first_time_offset > canvas_height / 15:
+                    log_text_canvas_ID = self.canvas_day_log_historic.create_text(canvas_width / 2, first_time_offset + 15, text = first_time, font = ("System", 16))
                     self.canvas_day_log_historic.tag_bind(log_text_canvas_ID, "<Button-1>", command)
 
-            except Exception as e:
-                print(e)
+            except Exception as e: print(e)
 
     def update_read_log_format(self, format, log_data):
         self.last_format_used = format
@@ -288,8 +342,18 @@ class Main:
 
         elif format == "chat":
             self.text_log_read_data.config(font = ("System", 10), bg = "gray10", fg = "white")
+
             for line in log_data.split("\n"):
-                if "[CHAT]" in line: self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], "".join(line.split("[CHAT]")[1:])), "chat_message")
+                if "[CHAT]" in line:
+                    line_text = "".join(line.split("[CHAT]")[1:])
+                    if "§" in line_text:
+                        self.text_log_read_data.insert(END, line[:10] + " ", "chat_message")
+                        for line_part in line_text.split("§"):
+                            self.text_log_read_data.insert(END, line_part[1:], "§" + line_part[0])
+                        self.text_log_read_data.insert(END, "\n")
+
+                    else: self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], line_text), "chat_message")
+
                 elif "Connecting to " in line: self.text_log_read_data.insert(END, "%s Connection à %s\n" % (line[:10], "".join(line.split("Connecting to ")[1:])), "server_connection")
 
     def update_log(self,file,year="?",month="?",day="?",first_hour="?",first_min="?",first_sec="?",last_hour="?",last_min="?",last_sec="?"):
@@ -300,7 +364,7 @@ class Main:
         else: self.label_log_read_metadata.config(text="Nom du fichier : %s" % file)
 
         with gzip.open(file) as log_file:
-            log_data = log_file.read().decode("utf-8", errors="ignore")
+            log_data = log_file.read().decode("cp1252", errors="ignore")
 
         self.button_log_read_format_raw.config(command = lambda log_data = log_data, format = "raw": self.update_read_log_format(format, log_data))
         self.button_log_read_format_chat.config(command = lambda log_data = log_data, format = "chat": self.update_read_log_format(format, log_data))
@@ -309,6 +373,7 @@ class Main:
         self.intersect_otherdata(year,month,day,first_hour,first_min,first_sec,last_hour,last_min,last_sec)
 
     def intersect_otherdata(self, year, month, day, first_hour, first_min, first_sec, last_hour, last_min, last_sec):
+
         if os.path.exists(self.path + "\\screenshots\\"): self.frame_screenshot_intersect.grid(row = 1, column = 3, rowspan = 3, sticky = "NS") # Si on trouve un dossier de screenshots, ont affiche l'interface associé
         else: self.frame_screenshot_intersect.grid_forget() # Sinon on l'efface si un autre dossier de jeu le contenait
         if os.path.exists(self.path + "\\replay_recordings\\"): self.frame_replay_intersect.grid(row = 1, column = 4, rowspan = 3, sticky = "NS") # Si on trouve un dossier de replay, ont affiche l'interface associé
@@ -371,22 +436,29 @@ class Main:
 
     def search_log(self):
         "permet de rechercher quelque chose dans les logs"
-
         toplevel_messagebox_search = Toplevel(self.root) # Nouvelle fenêtre pour ne pas surchargé l'interface principal
         toplevel_messagebox_search.grab_set() # On empêche d'intéragir avec la fenêtre principal
+        toplevel_messagebox_search.resizable(width = False, height = False)
+
+        try: toplevel_messagebox_search.iconbitmap("icon.ico")
+        except: pass
 
         def search_by_server(file):
             """Renvoie True si le nom du serveur est trouvé, sinon False"""
+            progressbar_action_bar.step(1)
+
             try:
-                with gzip.open(file) as log_file: log_data = log_file.read().decode(encoding='utf8', errors='ignore')
+                with gzip.open(file) as log_file: log_data = log_file.read().decode(encoding="cp1252", errors='ignore')
             except: return False
             if "Connecting to %s" % self.search_entry_data in log_data: return True
             else: return False
 
         def search_by_term(file):
             """Renvoie True si le terme, sinon False"""
+            progressbar_action_bar.step(1)
+
             try:
-                with gzip.open(file) as log_file: log_data = log_file.read().decode(encoding='utf8', errors='ignore')
+                with gzip.open(file) as log_file: log_data = log_file.read().decode(encoding="cp1252", errors='ignore')
             except: return False
             if self.search_entry_data in log_data: return True
             else: return False
@@ -410,17 +482,47 @@ class Main:
 
         def search():
             """fonction appelé par le bouton rechercher"""
-            self.search_entry_data = search_entry.get()
-            self.update_log_data(search_option[combobox_search_mode.get()])
-            self.update_calendar()
-            toplevel_messagebox_search.destroy()
+            path = self.entry_game_dir.get()
+            search_mode = combobox_search_mode.get()
+            search_entry_data = search_entry.get()
+
+            if search_mode == "":
+                messagebox.showerror("Erreur", "Veuillez sélectionner un type de filtre")
+                return -1
+
+            elif search_entry_data == "":
+                messagebox.showerror("Erreur", "Veuillez entrer un filtre")
+                return -1
+
+            max_step = len(glob.glob(path + "\\logs\\????-??-??-*.log.gz"))
+            progressbar_action_bar.config(maximum = max_step)
+
+            self.search_entry_data = search_entry_data
+            if self.update_log_data(search_option[search_mode]) == -1:
+                return -1
+
+            if self.update_calendar() == -1:
+                messagebox.showerror("Erreur", "Aucune correspondance trouvé")
+                return -1
+
+            back()
+
+        def pre_search():
+            "ligne éxécuter avant la recherche, pour l'esthétisme"
+            progressbar_action_bar.grid(row = 5, column = 1, sticky = "NEWS")
+            label_action_bar.grid_forget()
+
+            if search() == -1:
+                progressbar_action_bar.grid_forget()
+                label_action_bar.grid(row=5, column=1, sticky="NEWS")
 
         label_action_bar = LabelFrame(toplevel_messagebox_search) # Barre dans laquelle sont les boutons
         label_action_bar.grid(row = 5, column = 1, sticky = "NEWS")
         label_action_bar.columnconfigure(2, weight = 1) # Permet de créer l'espace entre les deux boutons et de les coller aux bords
         Button(label_action_bar, text="Retour", relief=RIDGE, command = back).grid(row=1, column=1)
-        Button(label_action_bar, text="Rechercher", relief = RIDGE, command = search).grid(row=1, column=3)
+        Button(label_action_bar, text="Rechercher", relief = RIDGE, command = lambda: Thread(target=pre_search).start()).grid(row=1, column=3)
 
+        progressbar_action_bar = ttk.Progressbar(toplevel_messagebox_search)
 
 main = Main()
 mainloop()
