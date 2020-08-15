@@ -43,6 +43,9 @@ class Main:
         Button(self.frame_button_game_dir_action, text="Rechercher...", command=self.search_log, relief=RIDGE).grid(row=1, column=2)
         Button(self.frame_button_game_dir_action, text="Connection via FTP...", command=self.connect_ftp, relief=RIDGE).grid(row=1, column=3)
 
+        self.variable_search_screenshot_only = BooleanVar(value = False)
+        self.variable_search_replay_only = BooleanVar(value = False)
+
         self.frame_calendar_log = Frame(self.root)
 
         self.frame_calendar_year_panel = Frame(self.frame_calendar_log)
@@ -174,10 +177,10 @@ class Main:
         self.canvas_replay.grid(row=1, column=1, sticky="NS")
         self.scrollbar_canvas_replay.config(command=self.canvas_replay.yview)
 
-        self.scrollbar_canvas_player = Scrollbar(self.frame_replay_intersect)
-        self.scrollbar_canvas_player.grid(row=1, column=2, sticky="NS")
-
         self.frame_player_intersect = LabelFrame(self.root, text="Joueurs")
+
+        self.scrollbar_canvas_player = Scrollbar(self.frame_player_intersect)
+        self.scrollbar_canvas_player.grid(row=1, column=2, sticky="NS")
 
         self.canvas_player = Canvas(self.frame_player_intersect, height=950, bg="lightgray",
                                     yscrollcommand=self.scrollbar_canvas_player.set, scrollregion=(0, 0, 0, 10000))
@@ -191,7 +194,7 @@ class Main:
             self.entry_game_dir.delete(0, END)
             self.entry_game_dir.insert(0, os.path.realpath(game_dir))
 
-    def update_log_data(self, func_log_sort_selection = None, custom_log_list = None):
+    def update_log_data(self, func_log_sort_selection = None, ftp_log_list = None):
         """Met à jour les métadonnées des logs en fonction du dossier de jeu sélectionné"""
         self.log_metadata = {}  # dictionnaire contenant les métadonnées des logs
         self.latest_log_year = -1
@@ -208,8 +211,9 @@ class Main:
         self.world_name = None
         self.player_list = []
 
-        if not(custom_log_list):
+        if not(ftp_log_list):
             if os.path.exists(self.path + "\\server.properties"):
+                self.last_format_used = "server"
                 with open(self.path + "\\server.properties", "r") as file:
                     self.world_name = file.read().split("level-name=")[-1].split("\n")[0]
                     self.frame_player_intersect.grid(row=1, column=5, rowspan=3, sticky="NS")
@@ -236,13 +240,13 @@ class Main:
                     break
                 except Exception as e: print("Tentative %i (playerdata) (%s)" % (tentative, str(e)))
 
-        if not(custom_log_list):
+        if not(ftp_log_list):
             if not (os.path.exists(self.path + "\\logs\\")):
                 messagebox.showerror("Erreur", "Ce dossier de jeu ne contient pas de dossier /logs/")
                 return -1
             list_log = glob.iglob(self.path + "\\logs\\" + "*.log.gz")
 
-        else: list_log = custom_log_list
+        else: list_log = ftp_log_list
 
         for file in list_log:
             log_date = os.path.basename(file).split("-")
@@ -251,6 +255,15 @@ class Main:
 
                 if func_log_sort_selection != None:
                     if not(func_log_sort_selection(file = file)): continue
+
+                    if self.variable_search_screenshot_only.get():
+                        if not(self.find_screenshot(year,month,day, 0, 0, 0, 24, 0, 0) > 0): # Timestamp Max # Si il n'a pas de screenshot associé.
+                            continue
+
+                    if self.variable_search_replay_only.get():
+                        if not(self.find_replay(year,month,day, 0, 0, 0, 24, 0, 0) > 0): # Timestamp Max # Si il n'a pas de replay associé.
+                            continue
+
 
                 if not(year in self.log_metadata):
                     _day_dict = {"total": 0}
@@ -286,10 +299,9 @@ class Main:
 
                 canvas_player_ID = self.canvas_player.create_rectangle(0, 100 * (index), canvas_width, 100 * (index + 1), fill = "gray80")
                 self.canvas_player.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=text, font=font)
-                self.canvas_player.tag_bind(canvas_player_ID, "<Button-1>", lambda event, p=player_uuid, cll = custom_log_list: self.player_nbt_inventory(player_uuid=p, custom_log_list=cll))
+                self.canvas_player.tag_bind(canvas_player_ID, "<Button-1>", lambda event, p=player_uuid: self.player_nbt_inventory(player_uuid=p, ftp_log_list=ftp_log_list))
 
-    def update_calendar(self, year = None, month = None, mode = "day", custom_log_list = None):
-        #TODO: Si une log n'est pas reconnu en date, mais qu'elle existe quand même, remplacé le jour par un rouge légé au lieu de la garder grise et inutilisable. (voir pour que les logs illisible s'affiche rouge dans la représentation du jour.)
+    def update_calendar(self, year = None, month = None, mode = "day", ftp_log_list = None):
         """Met à jour l'interface du calendrier"""
 
         self.frame_calendar_log.grid(row=2, column=1)
@@ -303,16 +315,16 @@ class Main:
         self.label_calendar_year.config(text = str(year))
         self.button_calendar_month.config(text = self.month_id_to_name[month])
 
-        if year > self.oldest_log_year: command = lambda: self.update_calendar(year = year - 1, month = 12, mode = mode, custom_log_list = custom_log_list)
+        if year > self.oldest_log_year: command = lambda: self.update_calendar(year = year - 1, month = 12, mode = mode, ftp_log_list = ftp_log_list)
         else: command = lambda: "pass"
         self.button_calendar_year_before.config(command = command)
-        if year < self.latest_log_year: command = lambda: self.update_calendar(year = year + 1, month = 1, mode = mode, custom_log_list = custom_log_list)
+        if year < self.latest_log_year: command = lambda: self.update_calendar(year = year + 1, month = 1, mode = mode, ftp_log_list = ftp_log_list)
         else: command = lambda: "pass"
         self.button_calendar_year_after.config(command = command)
-        if month > 1: command = lambda: self.update_calendar(year = year, month = month - 1, custom_log_list = custom_log_list)
+        if month > 1: command = lambda: self.update_calendar(year = year, month = month - 1, ftp_log_list = ftp_log_list)
         else: command = lambda: "pass"
         self.button_calendar_month_before.config(command = command)
-        if month < 12: command = lambda: self.update_calendar(year = year, month = month + 1, custom_log_list = custom_log_list)
+        if month < 12: command = lambda: self.update_calendar(year = year, month = month + 1, ftp_log_list = ftp_log_list)
         else: command = lambda: "pass"
         self.button_calendar_month_after.config(command = command)
 
@@ -323,15 +335,15 @@ class Main:
             self.frame_calendar_month_panel.grid(row=2, column=1, columnspan=3, sticky = "EW")
             self.button_calendar_month.config(command = lambda year=year, month=month: self.update_calendar(year, month, mode = "month"))
 
-            for day in range(1, day_number + 1):
+            for day in range(1, day_number + 1): # Pour chaque jour dans le mois
                 day_pos = day + day_offset - 1
                 command = lambda: "pass"
 
-                if not(year in self.log_metadata):
+                if not(year in self.log_metadata): # Si l'année même ne contient pas de log
                     bg = "lightgray"
-                elif self.log_metadata[year][month][day] > 0:
+                elif self.log_metadata[year][month][day] > 0: # Si il a au moins 1 log ce jour
                     bg = "#00%sFF" % hex(255 - (self.log_metadata[year][month][day] * 128 // self.max_log_total_day))[2:].zfill(2)
-                    command = lambda year=year, month=month, day=day, cll=custom_log_list: self.update_day(year, month, day, cll)
+                    command = lambda year=year, month=month, day=day, cll=ftp_log_list: self.update_day(year, month, day, cll)
                 else:
                     bg = "lightgray"
 
@@ -350,7 +362,15 @@ class Main:
                 else: bg = "lightgray"
                 month_button.config(bg = bg, command = lambda month = index + 1: self.update_calendar(year = year, month = month, mode = "day"))
 
-    def update_day(self, year, month, day, custom_log_list = None):
+    def timestamp_to_hms(self, timestamp):
+        hour, rest = divmod(timestamp, 3600)
+        min, sec = divmod(rest, 60)
+        return hour, min, sec
+
+    def hms_to_timestamp(self, hour, min, sec):
+        return hour * 3600 + min * 60 + sec
+
+    def update_day(self, year, month, day, ftp_log_list = None):
         """Met à jour l'interface affichant les différents logs"""
         for button in self.dict_button_day_log: button.destroy()
         self.canvas_day_log_historic.delete(ALL)
@@ -363,20 +383,20 @@ class Main:
         self.frame_day_log.grid(row = 1, column = 2, rowspan = 2)
         self.label_day_total_log.config(text = "fichier logs trouvé : %i" % self.log_metadata[year][month][day])
 
-        if not(custom_log_list): list_log = glob.iglob(self.path + "\\logs\\" + "%04i-%02i-%02i-*.log.gz" % (year, month, day))
+        if not(ftp_log_list): list_log = glob.iglob(self.path + "\\logs\\" + "%04i-%02i-%02i-*.log.gz" % (year, month, day))
         else:
             list_log = []
-            for log in custom_log_list:
+            for log in ftp_log_list:
                 if "%04i-%02i-%02i" % (year, month, day) in log:
                     list_log.append(log)
 
         for index, file in enumerate(list_log):
 
-            self.dict_button_day_log.append(Button(self.frame_day_log_button, text = os.path.basename(file), command = lambda f=file,cll=custom_log_list: self.update_log(f,cll)))
+            self.dict_button_day_log.append(Button(self.frame_day_log_button, text = os.path.basename(file), command = lambda f=file,cll=ftp_log_list: self.update_log(f,cll)))
             self.dict_button_day_log[-1].grid(row = index + 2, column = 1)
 
             try:
-                if not(custom_log_list):
+                if not(ftp_log_list):
                     with gzip.open(file) as log_file:
                         log_line = log_file.readlines()
                 else:
@@ -400,26 +420,29 @@ class Main:
                         break
 
                 first_hour, first_min, first_sec = (int(x) for x in first_time.split(":"))
-                first_timestamp = first_hour * 3600 + first_min * 60 + first_sec
+                first_timestamp = self.hms_to_timestamp(first_hour,first_min,first_sec)
                 last_hour, last_min, last_sec = (int(x) for x in last_time.split(":"))
-                last_timestamp = last_hour * 3600 + last_min * 60 + last_sec
+                last_timestamp = self.hms_to_timestamp(last_hour,last_min,last_sec)
 
                 first_time_offset = first_timestamp * canvas_height / (24 * 3600)
                 last_time_offset = last_timestamp * canvas_height / (24 * 3600)
                 median_time_offset = (first_time_offset + last_time_offset) // 2
                 duration_time = last_time_offset - first_time_offset
 
-                duration_hour, rest = divmod(last_timestamp - first_timestamp, 3600)
-                duration_min, duration_sec = divmod(rest, 60)
+                duration_hour, duration_min, duration_sec = self.timestamp_to_hms(last_timestamp-first_timestamp)
 
-                command = lambda e=None, f=file,y=year,m=month,d=day,h=first_hour,mi=first_min,s=first_sec,lh=last_hour,lmi=last_min,ls=last_sec,cll=custom_log_list: self.update_log(f,y,m,d,h,mi,s,lh,lmi,ls,custom_log_list)
+                command = lambda e=None, args=[file,year,month,day,first_timestamp,last_timestamp,ftp_log_list]: self.update_log(*args)
                 self.dict_button_day_log[-1].config(command = command)
 
-                log_canvas_ID = self.canvas_day_log_historic.create_rectangle(0, first_time_offset, canvas_width, last_time_offset, fill="cyan", width=1)
+                log_canvas_ID = self.canvas_day_log_historic.create_rectangle(0, first_time_offset, canvas_width, last_time_offset,
+                                                                              fill="cyan", width=1)
                 self.canvas_day_log_historic.tag_bind(log_canvas_ID, "<Button-1>", command)
 
                 if duration_time > canvas_height / 20:
-                    log_text_canvas_ID = self.canvas_day_log_historic.create_text(canvas_width / 2, median_time_offset, text = "%02i:%02i:%02i" % (duration_hour, duration_min, duration_sec), font = ("System", 16))
+                    log_text_canvas_ID = self.canvas_day_log_historic.create_text(canvas_width / 2, median_time_offset,
+                                                                                  text = "%02i:%02i:%02i" %
+                                                                                  (duration_hour, duration_min, duration_sec),
+                                                                                  font = ("System", 16))
                     self.canvas_day_log_historic.tag_bind(log_text_canvas_ID, "<Button-1>", command)
 
             except Exception as e: print(e)
@@ -447,7 +470,9 @@ class Main:
 
                     else: self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], line_text), "chat_message")
 
-                elif "Connecting to " in line: self.text_log_read_data.insert(END, "%s Connection à %s\n" % (line[:10], "".join(line.split("Connecting to ")[1:])), "server_connection")
+                elif "Connecting to " in line: self.text_log_read_data.insert(END, "%s Connection à %s\n" %
+                                                                              (line[:10], "".join(line.split("Connecting to ")[1:])),
+                                                                              "server_connection")
 
         elif format == "server":
             for line in log_data.split("\n"):
@@ -466,14 +491,16 @@ class Main:
 
         # Lors d'une recherche, le mot afficher est surligné (en jaune ou rouge)
 
-    def update_log(self,file,year="?",month="?",day="?",first_hour="?",first_min="?",first_sec="?",last_hour="?",last_min="?",last_sec="?",custom_log_list=None):
+    def update_log(self,file,year=0,month=0,day=0,first_timestamp=0,last_timestamp=0,ftp_log_list=None):
         """Met à jour l'interface affichant les différents logs"""
+        first_hour,first_min,first_sec = self.timestamp_to_hms(first_timestamp)
+        last_hour,last_min,last_sec = self.timestamp_to_hms(last_timestamp)
         # Permet d'afficher un mode simplifier pemettant de voir les connections / déconnection
         self.frame_log_read.grid(row = 3, column = 1, columnspan = 2)
-        if not(year == "?" or first_hour == "?" or last_hour == "?"): self.label_log_read_metadata.config(text = "Nom du fichier : %s\nDate : %02i/%02i/%04i %02i:%02i:%02i" % (file,day,month,year,first_hour,first_min,first_sec))
-        else: self.label_log_read_metadata.config(text="Nom du fichier : %s" % file)
+        self.label_log_read_metadata.config(text = "Nom du fichier : %s\nDate : %02i/%02i/%04i %02i:%02i:%02i" %
+                                            (file,day,month,year,first_hour,first_min,first_sec))
 
-        if not(custom_log_list):
+        if not(ftp_log_list):
             with gzip.open(file) as log_file: log_data = log_file.read().decode("cp1252")
         else:
             for tentative in range(5):
@@ -489,80 +516,105 @@ class Main:
                 except:
                     print("Tentative %i" % tentative)
 
-        self.button_log_read_format_raw.config(command = lambda log_data = log_data, format = "raw": self.update_read_log_format(format, log_data))
-        self.button_log_read_format_chat.config(command = lambda log_data = log_data, format = "chat": self.update_read_log_format(format, log_data))
-        self.button_log_read_format_server.config(command = lambda log_data = log_data, format = "server": self.update_read_log_format(format, log_data))
+        self.button_log_read_format_raw.config(command = lambda format = "raw": self.update_read_log_format(format, log_data))
+        self.button_log_read_format_chat.config(command = lambda format = "chat": self.update_read_log_format(format, log_data))
+        self.button_log_read_format_server.config(command = lambda format = "server": self.update_read_log_format(format, log_data))
 
         self.update_read_log_format(self.last_format_used, log_data)
-        self.intersect_otherdata(year,month,day,first_hour,first_min,first_sec,last_hour,last_min,last_sec)
+        self.intersect_otherdata(year,month,day,first_timestamp,last_timestamp)
 
-    def intersect_otherdata(self, year, month, day, first_hour, first_min, first_sec, last_hour, last_min, last_sec):
-        if os.path.exists(self.path + "\\screenshots\\"): self.frame_screenshot_intersect.grid(row = 1, column = 3, rowspan = 3, sticky = "NS") # Si on trouve un dossier de screenshots, ont affiche l'interface associé
+    def find_screenshot(self,year,month,day,first_timestamp,last_timestamp,update_canvas=False):
+        first_hour,first_min,first_sec = self.timestamp_to_hms(first_timestamp)
+        last_hour,last_min,last_sec = self.timestamp_to_hms(last_timestamp)
+
+        canvas_width, canvas_height = self.canvas_screenshot.winfo_width(), self.canvas_screenshot.winfo_height()
+        index = 0
+
+        for file in glob.iglob(self.path + "\\screenshots\\" + "%04i-%02i-%02i_*.png" % (year, month, day)):
+            filename = os.path.basename(file)
+
+            try:
+                screenshot_hour, screenshot_min, screenshot_sec = (int(x) for x in filename.split("_")[1].split(".")[:3])
+                screenshot_timestamp = self.hms_to_timestamp(screenshot_hour,screenshot_min,screenshot_sec)
+                first_timestamp = self.hms_to_timestamp(first_hour,first_min,first_sec)
+                last_timestamp = self.hms_to_timestamp(last_hour,last_min,last_sec)
+            except Exception as e: # Ceci se produit si la screenshot à été renommé, ...
+                continue
+
+            if first_timestamp < screenshot_timestamp < last_timestamp:  # On calcul et vérifie les timestamps pour être précis sur les screenshots associés
+                if update_canvas:
+                    with Image.open(file) as screenshot_image:
+                        screenshot_image = screenshot_image.resize((canvas_width - 10 - 10, 9 * canvas_width // 16))
+                        self.screenshot_imagetk[file] = ImageTk.PhotoImage(screenshot_image)
+                        canvas_image_ID = self.canvas_screenshot.create_image(canvas_width/2, (screenshot_image.height/2+5)*(index*2+1)+5,
+                                                                              image=self.screenshot_imagetk[file])
+                    self.canvas_screenshot.tag_bind(canvas_image_ID, "<Button-1>", lambda event, file=file: os.startfile(file))
+                index += 1
+
+        return index
+
+    def find_replay(self,year,month,day,first_timestamp,last_timestamp,update_canvas=False):
+        first_hour,first_min,first_sec = self.timestamp_to_hms(first_timestamp)
+        last_hour,last_min,last_sec = self.timestamp_to_hms(last_timestamp)
+
+        canvas_width, canvas_height = self.canvas_replay.winfo_width(), self.canvas_replay.winfo_height()
+        index = 0
+
+        for file in glob.iglob(self.path + "\\replay_recordings\\" + "%04i_%02i_%02i_*.mcpr" % (year, month, day)):
+            filename = os.path.basename(file)
+
+            try:
+                replay_hour, replay_min, replay_sec = (int(x) for x in
+                                                       "".join(filename.split(".")[:-1]).split("_")[-3:])
+                replay_timestamp = self.hms_to_timestamp(replay_hour,replay_min,replay_sec)
+                first_timestamp =  self.hms_to_timestamp(first_hour,first_min,first_sec)
+                last_timestamp =  self.hms_to_timestamp(last_hour,last_min,last_sec)
+            except Exception as e:
+                print(e)
+                continue
+
+            if first_timestamp < replay_timestamp < last_timestamp:
+                if update_canvas:
+                    with zipfile.ZipFile(file) as replay_file:
+                        with replay_file.open("metaData.json") as replay_metadata_file:
+                            replay_metadata = json.load(replay_metadata_file)
+
+                    replay_duration_hour, replay_duration_min, replay_duration_sec = self.timestamp_to_hms(replay_metadata["duration"] // 1000)
+
+                    self.canvas_replay.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=filename, font=("System", 18))
+                    self.canvas_replay.create_text(canvas_width / 2, 100 * (index + 1),
+                                                   text="IP du serveur : %s\n" % (replay_metadata["serverName"]) + \
+                                                        "Version du jeu : %s\n" % (replay_metadata["mcversion"]) + \
+                                                        "Durée : %02i:%02i:%02i\n" % (
+                                                        replay_duration_hour, replay_duration_min, replay_duration_sec),
+                                                   font=("System", 16))
+                index += 1
+        return index
+
+    def intersect_otherdata(self,year,month,day,first_timestamp,last_timestamp):
+        if os.path.exists(self.path + "\\screenshots\\"):
+            self.frame_screenshot_intersect.grid(row = 1, column = 3, rowspan = 3, sticky = "NS") # Si on trouve un dossier de screenshots, ont affiche l'interface associé
         else: self.frame_screenshot_intersect.grid_forget() # Sinon on l'efface si un autre dossier de jeu le contenait
-        if os.path.exists(self.path + "\\replay_recordings\\"): self.frame_replay_intersect.grid(row = 1, column = 4, rowspan = 3, sticky = "NS") # Si on trouve un dossier de replay, ont affiche l'interface associé
+        if os.path.exists(self.path + "\\replay_recordings\\"):
+            self.frame_replay_intersect.grid(row = 1, column = 4, rowspan = 3, sticky = "NS") # Si on trouve un dossier de replay, ont affiche l'interface associé
         else: self.frame_replay_intersect.grid_forget() # Sinon on l'efface si un autre dossier de jeu le contenait
 
         self.canvas_screenshot.delete(ALL) # Réinitilisation des screenshots affiché
         self.canvas_replay.delete(ALL) # Réinitilisation des replay affiché
 
         self.screenshot_imagetk = {} # Permet de garder "vivant" les screenshots (sinon, elles disparaissent instantanément)
-        if year == "?" or first_hour == "?" or last_hour == "?":
+        if first_timestamp==0 and last_timestamp==0:
             messagebox.showwarning("Attention", "Le programme n'à pas réussi à déterminer l'heure de ce log, il se peut "+\
                                                 "que certaines fonctionnalitées soient alors indisponible.")
 
-        index = 0
-        for file in glob.iglob(self.path + "\\screenshots\\" + "%04i-%02i-%02i_*.png" % (year, month, day)):
-            filename = os.path.basename(file)
-
-            try:
-                screenshot_hour, screenshot_min, screenshot_sec = (int(x) for x in filename.split("_")[-1].split(".")[:3])
-                screenshot_timestamp = screenshot_hour * 3600 + screenshot_min * 60 + screenshot_sec
-                first_timestamp = first_hour * 3600 + first_min * 60 + first_sec
-                last_timestamp = last_hour * 3600 + last_min * 60 + last_sec
-            except: continue
-
-            if first_timestamp < screenshot_timestamp < last_timestamp: # On calcul et vérifie les timestamps pour être précis sur les screenshots associés
-                with Image.open(file) as screenshot_image:
-                    screenshot_image = screenshot_image.resize((canvas_width - 10 - 10, 9 * canvas_width // 16))
-                    self.screenshot_imagetk[file] = ImageTk.PhotoImage(screenshot_image)
-                    canvas_image_ID = self.canvas_screenshot.create_image(canvas_width / 2, (screenshot_image.height / 2 + 5) * (index * 2 + 1) + 5, image = self.screenshot_imagetk[file])
-                self.canvas_screenshot.tag_bind(canvas_image_ID, "<Button-1>", lambda event, file=file: os.startfile(file))
-                index += 1
-
-        index = 0
-        for file in glob.iglob(self.path + "\\replay_recordings\\" + "%04i_%02i_%02i_*.mcpr" % (year, month, day)):
-            filename = os.path.basename(file)
-
-            try:
-                replay_hour, replay_min, replay_sec = (int(x) for x in "".join(filename.split(".")[:-1]).split("_")[-3:])
-                replay_timestamp = replay_hour * 3600 + replay_min * 60 + replay_sec
-                first_timestamp = first_hour * 3600 + first_min * 60 + first_sec
-                last_timestamp = last_hour * 3600 + last_min * 60 + last_sec
-            except Exception as e: print(e)
-
-            if first_timestamp < replay_timestamp < last_timestamp:
-                with zipfile.ZipFile(file) as replay_file:
-                    with replay_file.open("metaData.json") as replay_metadata_file:
-                        replay_metadata = json.load(replay_metadata_file)
-
-                replay_duration_hour, rest = divmod(replay_metadata["duration"], 60 * 60 * 1000)
-                replay_duration_min, rest = divmod(rest, 60 * 1000)
-                replay_duration_sec = rest // 1000
-
-                self.canvas_replay.create_text(canvas_width / 2, 100 * (index + 1) - 50, text = filename, font = ("System", 18))
-                self.canvas_replay.create_text(canvas_width / 2, 100 * (index + 1),
-                                               text="IP du serveur : %s\n" % (replay_metadata["serverName"]) +\
-                                                "Version du jeu : %s\n" % (replay_metadata["mcversion"]) +\
-                                                "Durée : %02i:%02i:%02i\n" % (replay_duration_hour, replay_duration_min, replay_duration_sec),
-                                               font=("System", 16))
-                index += 1
+        self.find_screenshot(year,month,day,first_timestamp,last_timestamp,update_canvas=True)
+        self.find_replay(year,month,day,first_timestamp,last_timestamp,update_canvas=True)
 
     def search_log(self):
         "permet de rechercher quelque chose dans les logs"
         toplevel_messagebox_search = Toplevel(self.root) # Nouvelle fenêtre pour ne pas surchargé l'interface principal
         toplevel_messagebox_search.grab_set() # On empêche d'intéragir avec la fenêtre principal
         toplevel_messagebox_search.resizable(width = False, height = False)
-
         try: toplevel_messagebox_search.iconbitmap("icon.ico")
         except: pass
 
@@ -586,15 +638,16 @@ class Main:
             if self.search_entry_data in log_data: return True
             else: return False
 
-        #TODO: Plus de paramètre de recherche (uniquement les logs avec des screenshots par exemple) + affichage seulement des logs epondante (pas les logs du même jour que la recherche)
-
         search_option = {
+            "Tout les logs": lambda file: True,
             "Rechercher les connections à un serveur": search_by_server,
             "Rechercher un pseudo, un mot, un terme, une phrase": search_by_term,
         } # Différent moyen de trie associer à leur fonction
 
         Label(toplevel_messagebox_search, text = "Je souhaite...").grid(row = 1, column = 1)
-        combobox_search_mode = ttk.Combobox(toplevel_messagebox_search, values = list(search_option.keys()), width = 50, font = ("Purisa", 20)) # Combobox dans lequel ont choisi sont type de tri
+        combobox_search_mode = ttk.Combobox(toplevel_messagebox_search, values = list(search_option.keys()),
+                                            width = 50, font = ("Purisa", 20)) # Combobox dans lequel ont choisi sont type de tri
+        combobox_search_mode.insert(0, list(search_option.keys())[0])
         combobox_search_mode.grid(row = 2, column = 1)
         Label(toplevel_messagebox_search, text = "...qui est...").grid(row = 3, column = 1)
         search_entry = Entry(toplevel_messagebox_search, font = ("System", 18)) # Entry dans lequel on tape notre requête
@@ -606,7 +659,6 @@ class Main:
             toplevel_messagebox_search.destroy()
 
         def search():
-            #TODO: Améliorer les recherches (parfois le programme accepte votre recherche mais n'affiche aucun résultat)
             """fonction appelé par le bouton rechercher"""
             path = self.entry_game_dir.get()
             search_mode = combobox_search_mode.get()
@@ -616,7 +668,7 @@ class Main:
                 messagebox.showerror("Erreur", "Veuillez sélectionner un type de filtre")
                 return -1
 
-            elif search_entry_data == "":
+            elif search_entry_data == "" and not(search_mode == list(search_option.keys())[0]):
                 messagebox.showerror("Erreur", "Veuillez entrer un filtre")
                 return -1
 
@@ -648,12 +700,17 @@ class Main:
         Button(label_action_bar, text="Retour", relief=RIDGE, command = back).grid(row=1, column=1)
         Button(label_action_bar, text="Rechercher", relief = RIDGE, command = lambda: Thread(target=pre_search).start()).grid(row=1, column=3)
 
+        Checkbutton(label_action_bar, text="Uniquement si il contient des screenshots", variable = self.variable_search_screenshot_only).grid(row=2, column=1, columnspan=3)
+        Checkbutton(label_action_bar, text="Uniquement si il contient des replays", variable = self.variable_search_replay_only).grid(row=3, column=1, columnspan=3)
+
         progressbar_action_bar = ttk.Progressbar(toplevel_messagebox_search)
 
     def connect_ftp(self):
         toplevel_messagebox_ftp = Toplevel(self.root)  # Nouvelle fenêtre pour ne pas surchargé l'interface principal
         toplevel_messagebox_ftp.grab_set()  # On empêche d'intéragir avec la fenêtre principal
         toplevel_messagebox_ftp.resizable(width=False, height=False)
+        try: self.root.iconbitmap("icon.ico")
+        except: pass
 
         Label(toplevel_messagebox_ftp, text = "IP du serveur : ").grid(row = 1, column = 1)
         entry_ftp_host_ip = Entry(toplevel_messagebox_ftp, font = ("System", 18))
@@ -691,16 +748,19 @@ class Main:
                 return -1
 
             try:
-                custom_log_list = self.server_FTP.nlst("logs/")
-                if self.update_log_data(custom_log_list = custom_log_list) == -1:
-                    raise Exception()
+                ftp_log_list = self.server_FTP.nlst("logs/")
+                for tentative in range(1, 5 + 1):
+                    if self.update_log_data(ftp_log_list = ftp_log_list) == -1:
+                        if tentative == 5: raise Exception()
+                        continue
+                    else: break
             except ftplib.error_temp:
                 messagebox.showerror("Erreur", "Impossible de faire une requête au serveur FTP\n"+\
                                      "Vérifier que aucun autre processus n'est connecté au même\n"+\
                                      "Serveur FTP, puis réessayer.")
                 return -1
             except: return -1
-            if self.update_calendar(custom_log_list = custom_log_list) == -1:
+            if self.update_calendar(ftp_log_list = ftp_log_list) == -1:
                 messagebox.showerror("Erreur", "Aucune correspondance trouvé")
                 return -1
 
@@ -709,37 +769,54 @@ class Main:
         Button(toplevel_messagebox_ftp, text = "Retour", relief = RIDGE, command = back).grid(row = 3, column = 1, columnspan = 2, sticky = "NEWS")
         Button(toplevel_messagebox_ftp, text = "Connexion", relief = RIDGE, command = connexion).grid(row = 3, column = 3, columnspan = 2, sticky = "NEWS")
 
-    def player_nbt_inventory(self, player_uuid, custom_log_list):
+    def player_nbt_inventory(self, player_uuid, ftp_log_list):
         toplevel_messagebox_player_inventory = Toplevel(self.root)  # Nouvelle fenêtre pour ne pas surchargé l'interface principal
         toplevel_messagebox_player_inventory.grab_set()  # On empêche d'intéragir avec la fenêtre principal
         toplevel_messagebox_player_inventory.resizable(width=False, height=False)
         toplevel_messagebox_player_inventory.title(player_uuid)
+        try: self.root.iconbitmap("icon.ico")
+        except: pass
 
         player_inventory_image = Image.open("assets\\inventory.png")
         ratio = player_inventory_image.height / player_inventory_image.width
         player_inventory_image = player_inventory_image.resize((500, round(500 * ratio)))
         self.player_inventory_image_tk = ImageTk.PhotoImage(player_inventory_image)
-        width, height = player_inventory_image.width, player_inventory_image.height
+        width_inventory, height_inventory = player_inventory_image.width, player_inventory_image.height
 
         item_not_found_image = Image.open("assets\\not_found_icon.png").resize((46,46))
         item_not_found_image_tk = ImageTk.PhotoImage(item_not_found_image)
+        container_9x3_image = Image.open("assets\\container_9x3.png").resize((500, 250))
+        self.container_9x3_image_tk = ImageTk.PhotoImage(container_9x3_image)
 
-        canvas_player_inventory = Canvas(toplevel_messagebox_player_inventory, width = width, height = height)
-        canvas_player_inventory.create_line(0, 0, width, height)
-        canvas_player_inventory.create_image(width // 2, height // 2, image = self.player_inventory_image_tk)
-        canvas_player_inventory.grid(row = 1, column = 1)
+        width_enderchest, height_enderchest = container_9x3_image.width, container_9x3_image.height
 
-        self.slot_id_to_canvas = {}
-        for index, slot_id in enumerate(range(9)): self.slot_id_to_canvas[slot_id] = (index * 51 + 22, 403) # Constante obtenu pour une image de 500x500
-        for index, slot_id in enumerate(range(9, 18)): self.slot_id_to_canvas[slot_id] = (index * 51 + 22, 238) # Constante obtenu pour une image de 500x500
-        for index, slot_id in enumerate(range(18, 27)): self.slot_id_to_canvas[slot_id] = (index * 51 + 22, 290) # Constante obtenu pour une image de 500x500
-        for index, slot_id in enumerate(range(27, 36)): self.slot_id_to_canvas[slot_id] = (index * 51 + 22, 341) # Constante obtenu pour une image de 500x500
-        for index, slot_id in enumerate(range(36, 40)): self.slot_id_to_canvas[slot_id] = (22, index * 5 + 22) # Constante obtenu pour une image de 500x500
-        self.slot_id_to_canvas[40] = (77, 62)
+        Label(toplevel_messagebox_player_inventory, text = "Inventaire", font = ("System", 20)).grid(row = 1, column = 1)
+        canvas_player_inventory = Canvas(toplevel_messagebox_player_inventory, width = width_inventory, height = height_inventory)
+        canvas_player_inventory.create_image(width_inventory // 2, height_inventory // 2, image = self.player_inventory_image_tk)
+        canvas_player_inventory.grid(row = 2, column = 1)
+
+        Label(toplevel_messagebox_player_inventory, text="Ender Chest", font=("System", 20)).grid(row=1, column=2)
+        canvas_player_enderchest = Canvas(toplevel_messagebox_player_inventory, width=width_enderchest, height=height_enderchest)
+        canvas_player_enderchest.create_image(width_enderchest // 2, height_enderchest // 2, image=self.container_9x3_image_tk)
+        canvas_player_enderchest.grid(row=2, column=2)
+
+        self.slot_id_to_canvas_inventory = {}
+        for index, slot_id in enumerate(range(9)): self.slot_id_to_canvas_inventory[slot_id] = (index * 51 + 22, 403) # Constante obtenu pour une image de 500x500
+        for index, slot_id in enumerate(range(9, 18)): self.slot_id_to_canvas_inventory[slot_id] = (index * 51 + 22, 238) # Constante obtenu pour une image de 500x500
+        for index, slot_id in enumerate(range(18, 27)): self.slot_id_to_canvas_inventory[slot_id] = (index * 51 + 22, 290) # Constante obtenu pour une image de 500x500
+        for index, slot_id in enumerate(range(27, 36)): self.slot_id_to_canvas_inventory[slot_id] = (index * 51 + 22, 341) # Constante obtenu pour une image de 500x500
+        for index, slot_id in enumerate(range(103, 99, -1)): self.slot_id_to_canvas_inventory[slot_id] = (22, index * 51 + 22) # Constante obtenu pour une image de 500x500
+        self.slot_id_to_canvas_inventory[-106] = (77, 62)
+
+        self.slot_id_to_canvas_enderchest = {}
+        for index in range(27): self.slot_id_to_canvas_enderchest[index] = ((index % 9) * 51 + 22, (index // 9) * 51 + 51)  # Constante obtenu pour une image de 500x500
+
+        label_item_information = Label(toplevel_messagebox_player_inventory, text = "Cliquer sur un objet pour voir ses statistiques", font = ("System", 12))
+        label_item_information.grid(row = 3, column = 1)
 
         self.texture_assets = {}
         nbt_data = None
-        if not(custom_log_list): nbt_data = nbt.nbt.NBTFile(self.path + "\\%s\\playerdata\\%s" % (self.world_name, player_uuid))
+        if not(ftp_log_list): nbt_data = nbt.nbt.NBTFile(self.path + "\\%s\\playerdata\\%s" % (self.world_name, player_uuid))
         else:
             for tentative in range(5):
                 try:
@@ -756,32 +833,64 @@ class Main:
             toplevel_messagebox_player_inventory.destroy()
             return -1
 
+        def load_item_texture(item):
+            if "minecraft:" in item:
+                if not(item in self.texture_assets):
+                    item_texture_path = "assets\\item\\%s.png" % item.split(":")[-1]
+                    item_texture_path_side = "assets\\item\\%s_side.png" % item.split(":")[-1]
+                    item_texture_path_front = "assets\\item\\%s_front.png" % item.split(":")[-1]
+
+                    if os.path.exists(item_texture_path): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path).resize((46,46)))
+                    elif os.path.exists(item_texture_path_side): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path_side).resize((46,46)))
+                    elif os.path.exists(item_texture_path_front): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path_front).resize((46, 46)))
+                    elif "spawn_egg" in item: self.texture_assets[item] = ImageTk.PhotoImage(Image.open("assets\\item\\spawn_egg.png").resize((46, 46)))
+                    else: self.texture_assets[item] = item_not_found_image_tk
+            else: return -1
+
+        def show_more_information(item):
+            if "tag" in item:
+                Tags = "\n"
+                try:
+                    if "Damage" in item["tag"]: Tags += "Damage : %s\n" % str(item["tag"]["Damage"].value)
+                except: Tags += "Damage : ?"
+                if "Enchantments" in item["tag"]:
+                    Tags += "Enchanté avec : \n"
+                    for enchant in item["tag"]["Enchantments"]:
+                        Tags += "\t%s (niveau %i)\n" % (enchant[0].value, enchant[1].value)
+                if "display" in item["tag"]:
+                    if "Name" in item["tag"]["display"]: Tags += "Renommée en : %s\n" % item["tag"]["display"]["Name"].value
+                    if "Lore" in item["tag"]["display"]: Tags += "Lore : %s\n" % item["tag"]["display"]["Lore"].value
+                if "SkullOwner" in item["tag"]: Tags += "Tête de : %s\n" % item["tag"]["SkullOwner"].value
+            else: Tags = "Aucune"
+
+            label_item_information.config(text = "Nom de l'objet : %s\n" % item["id"].value +\
+                                          "Quantité : %i\n" % item["Count"].value +\
+                                          "Tags : %s\n" % Tags)
+
         for item in nbt_data["Inventory"].tags:
             try:
-                if "minecraft:" in item[1].value:
-                    if not(item[1].value in self.texture_assets):
-                        item_texture_path = "assets\\item\\%s.png" % item[1].value.split(":")[-1]
-                        item_texture_path_side = "assets\\item\\%s_side.png" % item[1].value.split(":")[-1]
-                        item_texture_path_front = "assets\\item\\%s_front.png" % item[1].value.split(":")[-1]
+                if not(load_item_texture(item["id"].value) == -1):
+                    canvas_item_ID = canvas_player_inventory.create_image(*self.slot_id_to_canvas_inventory[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw")
+                    canvas_player_inventory.tag_bind(canvas_item_ID, "<Button-1>", lambda e, item = item: show_more_information(item))
+                    canvas_player_inventory.create_text(*[x + 48 for x in self.slot_id_to_canvas_inventory[item["Slot"].value]], text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white")
+            except Exception as e:
+                print("Inventaire : " + str(e))
 
-                        if os.path.exists(item_texture_path): self.texture_assets[item[1].value] = ImageTk.PhotoImage(Image.open(item_texture_path).resize((46,46)))
-                        elif os.path.exists(item_texture_path_side): self.texture_assets[item[1].value] = ImageTk.PhotoImage(Image.open(item_texture_path_side).resize((46,46)))
-                        elif os.path.exists(item_texture_path_front): self.texture_assets[item[1].value] = ImageTk.PhotoImage(Image.open(item_texture_path_front).resize((46, 46)))
-                        elif "spawn_egg" in item[1].value: self.texture_assets[item[1].value] = ImageTk.PhotoImage(Image.open("assets\\item\\spawn_egg.png").resize((46, 46)))
-                        else: self.texture_assets[item[1].value] = item_not_found_image_tk
+        for item in nbt_data["EnderItems"].tags:
+            try:
+                if not(load_item_texture(item["id"].value) == -1):
+                    canvas_item_ID = canvas_player_enderchest.create_image(*self.slot_id_to_canvas_enderchest[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw")
+                    canvas_player_enderchest.tag_bind(canvas_item_ID, "<Button-1>", lambda e, item=item: show_more_information(item))
+                    canvas_player_enderchest.create_text(*[x + 48 for x in self.slot_id_to_canvas_enderchest[item["Slot"].value]], text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white")
+            except Exception as e:
+                print("Enderchest : " + str(e))
 
-                    canvas_player_inventory.create_image(*self.slot_id_to_canvas[item[0].value], image = self.texture_assets[item[1].value], anchor="nw")
-                    canvas_player_inventory.create_text(*[x + 48 for x in self.slot_id_to_canvas[item[0].value]], text = str(item[2].value), font = ("System", 18), anchor="se", fill = "white")
+        player_metadata_text = ""
+        if "Pos" in nbt_data: player_metadata_text += "Coordonées : x = %i | y = %i | z = %i\n" % (nbt_data["Pos"][0].value, nbt_data["Pos"][1].value, nbt_data["Pos"][2].value)
+        if "Health" in nbt_data: player_metadata_text += "Vie : %i / 20\n" % nbt_data["Health"].value
+        if "SpawnX" in nbt_data: player_metadata_text += "Spawnpoint : x = %i | y = %i | z = %i\n" % (nbt_data["SpawnX"].value, nbt_data["SpawnY"].value, nbt_data["SpawnZ"].value)
 
-                    item[3].value # Tag
-
-            except Exception as e: print(e)
-
-
-#TODO: - Autorisé une très grande carte du jeu, peut être même des statistiques (temps joué total, ...)
-#TODO: - Réglé le problème d'affichage des heures.
-#TODO: - Ajouter la durée et l'heure de fin sur l'apercu du jour.
-#TODO: - Optimiser les arguments de fonction, il y en a beaucoup trop (kwargs)
+        Label(toplevel_messagebox_player_inventory, text = player_metadata_text, font =("System", 8)).grid(row = 3, column = 2)
 
 main = Main()
 mainloop()
