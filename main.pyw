@@ -13,8 +13,10 @@ import gzip
 import glob
 import json
 import nbt
+import sys
 import os
 
+os.chdir(os.path.dirname(os.path.realpath(sys.argv[0]))) # Si un raccourcie est créer, alors le programme se lance dans son dossier malgré les indications.
 
 class Main:
     def __init__(self):
@@ -34,14 +36,21 @@ class Main:
         Button(self.frame_game_dir, text="...", command=self.select_game_dir, relief = RIDGE).grid(row=2, column=2)
 
         def option_calendar():
-            if self.update_log_data() != -1:
-                self.update_calendar()
+            self.frame_button_game_dir_action.grid_forget()
+            self.progressbar_game_dir.grid(row=3, column=1, columnspan=2, sticky="NEWS")
+
+            if self.update_log_data() != -1: self.update_calendar()
+
+            self.frame_button_game_dir_action.grid(row=3, column=1, columnspan=2, sticky="NEWS")
+            self.progressbar_game_dir.grid_forget()
 
         self.frame_button_game_dir_action = Frame(self.frame_game_dir)
-        self.frame_button_game_dir_action.grid(row = 3, column = 1, columnspan = 2)
-        Button(self.frame_button_game_dir_action, text="Calendrier", command=option_calendar, relief=RIDGE).grid(row = 1, column = 1)
-        Button(self.frame_button_game_dir_action, text="Rechercher...", command=self.search_log, relief=RIDGE).grid(row=1, column=2)
+        self.frame_button_game_dir_action.grid(row = 3, column = 1, columnspan = 2, sticky = "NEWS")
+        Button(self.frame_button_game_dir_action, text="Recherche", command=lambda: Thread(target = option_calendar).start(), relief=RIDGE).grid(row = 1, column = 1)
+        Button(self.frame_button_game_dir_action, text="Recherche avancé", command=self.search_log, relief=RIDGE).grid(row=1, column=2)
         Button(self.frame_button_game_dir_action, text="Connection via FTP...", command=self.connect_ftp, relief=RIDGE).grid(row=1, column=3)
+
+        self.progressbar_game_dir = ttk.Progressbar(self.frame_game_dir)
 
         self.variable_search_screenshot_only = BooleanVar(value = False)
         self.variable_search_replay_only = BooleanVar(value = False)
@@ -237,6 +246,7 @@ class Main:
             for tentative in range(5):
                 try:
                     self.player_list = [os.path.basename(x) for x in self.server_FTP.nlst(self.world_name + "/playerdata/")]
+                    self.progressbar_messagebox_ftp.config(maximum=len(self.player_list) + 1)
                     break
                 except Exception as e: print("Tentative %i (playerdata) (%s)" % (tentative, str(e)))
 
@@ -244,9 +254,11 @@ class Main:
             if not (os.path.exists(self.path + "\\logs\\")):
                 messagebox.showerror("Erreur", "Ce dossier de jeu ne contient pas de dossier /logs/")
                 return -1
-            list_log = glob.iglob(self.path + "\\logs\\" + "*.log.gz")
+            list_log = glob.glob(self.path + "\\logs\\" + "*.log.gz")
 
         else: list_log = ftp_log_list
+
+        self.progressbar_game_dir.config(maximum = len(list_log) + len(self.player_list))
 
         for file in list_log:
             log_date = os.path.basename(file).split("-")
@@ -291,15 +303,20 @@ class Main:
                         self.oldest_log_month = month
                     self.oldest_log_year = year
 
-        for index, player_uuid in enumerate(self.player_list):
-                try:
-                    request = urllib.request.urlopen("https://api.mojang.com/user/profiles/%s/names" % player_uuid.replace("-", "").split(".")[0])
-                    text, font = json.loads(request.read())[-1]["name"], ("System", 18)
-                except: text, font = player_uuid, ("System", 16)
+            self.progressbar_game_dir.step()
 
-                canvas_player_ID = self.canvas_player.create_rectangle(0, 100 * (index), canvas_width, 100 * (index + 1), fill = "gray80")
-                self.canvas_player.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=text, font=font)
-                self.canvas_player.tag_bind(canvas_player_ID, "<Button-1>", lambda event, p=player_uuid: self.player_nbt_inventory(player_uuid=p, ftp_log_list=ftp_log_list))
+        for index, player_uuid in enumerate(self.player_list):
+            try:
+                request = urllib.request.urlopen("https://api.mojang.com/user/profiles/%s/names" % player_uuid.replace("-", "").split(".")[0])
+                text, font = json.loads(request.read())[-1]["name"], ("System", 18)
+            except: text, font = player_uuid, ("System", 16)
+
+            self.canvas_player.create_rectangle(0, 100 * (index), canvas_width, 100 * (index + 1), fill = "gray80", tags = "player-%i" % index)
+            self.canvas_player.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=text, font=font, tags = "player-%i" % index)
+            self.canvas_player.tag_bind("player-%i" % index, "<Button-1>", lambda event, p=player_uuid: self.player_nbt_inventory(player_uuid=p, ftp_log_list=ftp_log_list))
+
+            if ftp_log_list: self.progressbar_messagebox_ftp.step()
+            self.progressbar_game_dir.step()
 
     def update_calendar(self, year = None, month = None, mode = "day", ftp_log_list = None):
         """Met à jour l'interface du calendrier"""
@@ -725,7 +742,7 @@ class Main:
         entry_ftp_user = Entry(toplevel_messagebox_ftp, font=("System", 18))
         entry_ftp_user.grid(row=2, column=2)
         Label(toplevel_messagebox_ftp, text="Mot de passe : ").grid(row=2, column=3)
-        entry_ftp_password = Entry(toplevel_messagebox_ftp, font=("System", 18))
+        entry_ftp_password = Entry(toplevel_messagebox_ftp, font=("System", 18), show = "*")
         entry_ftp_password.grid(row=2, column=4)
 
         def back():
@@ -742,13 +759,15 @@ class Main:
             except:
                 messagebox.showerror("Erreur", "L'hôte n'a pas été trouvé")
                 return -1
-            try: self.server_FTP.login(user, password)
+            try:
+                self.server_FTP.login(user, password)
             except:
                 messagebox.showerror("Erreur", "Les identifiants ne sont pas correct")
                 return -1
 
             try:
                 ftp_log_list = self.server_FTP.nlst("logs/")
+                self.progressbar_messagebox_ftp.step()
                 for tentative in range(1, 5 + 1):
                     if self.update_log_data(ftp_log_list = ftp_log_list) == -1:
                         if tentative == 5: raise Exception()
@@ -766,8 +785,23 @@ class Main:
 
             back()
 
-        Button(toplevel_messagebox_ftp, text = "Retour", relief = RIDGE, command = back).grid(row = 3, column = 1, columnspan = 2, sticky = "NEWS")
-        Button(toplevel_messagebox_ftp, text = "Connexion", relief = RIDGE, command = connexion).grid(row = 3, column = 3, columnspan = 2, sticky = "NEWS")
+        def pre_connexion():
+            frame_messagebox_ftp_action_bar.grid_forget()
+            self.progressbar_messagebox_ftp.grid(row = 3, column = 1, columnspan = 4, sticky = "NEWS")
+
+            if connexion() == -1:
+                frame_messagebox_ftp_action_bar.grid(row = 3, column = 1, columnspan = 4, sticky = "NEWS")
+                self.progressbar_messagebox_ftp.grid_forget()
+
+
+        frame_messagebox_ftp_action_bar = Frame(toplevel_messagebox_ftp)
+        frame_messagebox_ftp_action_bar.grid(row = 3, column = 1, columnspan = 4, sticky = "NEWS")
+        frame_messagebox_ftp_action_bar.columnconfigure(2, weight = 1)
+        Button(frame_messagebox_ftp_action_bar, text = "Retour", relief = RIDGE, command = back).grid(row = 3, column = 1, sticky = "NEWS")
+        Button(frame_messagebox_ftp_action_bar, text = "Connexion", relief = RIDGE, command = lambda: Thread(target=pre_connexion).start()).grid(row = 3, column = 3, sticky = "NEWS")
+
+        self.progressbar_messagebox_ftp = ttk.Progressbar(toplevel_messagebox_ftp)
+
 
     def player_nbt_inventory(self, player_uuid, ftp_log_list):
         toplevel_messagebox_player_inventory = Toplevel(self.root)  # Nouvelle fenêtre pour ne pas surchargé l'interface principal
@@ -788,17 +822,22 @@ class Main:
         container_9x3_image = Image.open("assets\\container_9x3.png").resize((500, 250))
         self.container_9x3_image_tk = ImageTk.PhotoImage(container_9x3_image)
 
-        width_enderchest, height_enderchest = container_9x3_image.width, container_9x3_image.height
+        width_container_9x3, height_container_9x3 = container_9x3_image.width, container_9x3_image.height
 
         Label(toplevel_messagebox_player_inventory, text = "Inventaire", font = ("System", 20)).grid(row = 1, column = 1)
         canvas_player_inventory = Canvas(toplevel_messagebox_player_inventory, width = width_inventory, height = height_inventory)
         canvas_player_inventory.create_image(width_inventory // 2, height_inventory // 2, image = self.player_inventory_image_tk)
-        canvas_player_inventory.grid(row = 2, column = 1)
+        canvas_player_inventory.grid(row = 2, column = 1, rowspan = 3)
 
         Label(toplevel_messagebox_player_inventory, text="Ender Chest", font=("System", 20)).grid(row=1, column=2)
-        canvas_player_enderchest = Canvas(toplevel_messagebox_player_inventory, width=width_enderchest, height=height_enderchest)
-        canvas_player_enderchest.create_image(width_enderchest // 2, height_enderchest // 2, image=self.container_9x3_image_tk)
+        canvas_player_enderchest = Canvas(toplevel_messagebox_player_inventory, width=width_container_9x3, height=height_container_9x3)
+        canvas_player_enderchest.create_image(width_container_9x3 // 2, height_container_9x3 // 2, image=self.container_9x3_image_tk)
         canvas_player_enderchest.grid(row=2, column=2)
+
+        Label(toplevel_messagebox_player_inventory, text="Shulker", font=("System", 20)).grid(row=3, column=2)
+        canvas_player_shulker = Canvas(toplevel_messagebox_player_inventory, width=width_container_9x3, height=height_container_9x3)
+        canvas_player_shulker.create_image(width_container_9x3 // 2, height_container_9x3 // 2, image=self.container_9x3_image_tk)
+        canvas_player_shulker.grid(row=4, column=2)
 
         self.slot_id_to_canvas_inventory = {}
         for index, slot_id in enumerate(range(9)): self.slot_id_to_canvas_inventory[slot_id] = (index * 51 + 22, 403) # Constante obtenu pour une image de 500x500
@@ -806,13 +845,13 @@ class Main:
         for index, slot_id in enumerate(range(18, 27)): self.slot_id_to_canvas_inventory[slot_id] = (index * 51 + 22, 290) # Constante obtenu pour une image de 500x500
         for index, slot_id in enumerate(range(27, 36)): self.slot_id_to_canvas_inventory[slot_id] = (index * 51 + 22, 341) # Constante obtenu pour une image de 500x500
         for index, slot_id in enumerate(range(103, 99, -1)): self.slot_id_to_canvas_inventory[slot_id] = (22, index * 51 + 22) # Constante obtenu pour une image de 500x500
-        self.slot_id_to_canvas_inventory[-106] = (77, 62)
+        self.slot_id_to_canvas_inventory[-106] = (218, 176)
 
-        self.slot_id_to_canvas_enderchest = {}
-        for index in range(27): self.slot_id_to_canvas_enderchest[index] = ((index % 9) * 51 + 22, (index // 9) * 51 + 51)  # Constante obtenu pour une image de 500x500
+        self.slot_id_to_canvas_container_9x3 = {}
+        for index in range(27): self.slot_id_to_canvas_container_9x3[index] = ((index % 9) * 51 + 22, (index // 9) * 51 + 51)  # Constante obtenu pour une image de 500x500
 
         label_item_information = Label(toplevel_messagebox_player_inventory, text = "Cliquer sur un objet pour voir ses statistiques", font = ("System", 12))
-        label_item_information.grid(row = 3, column = 1)
+        label_item_information.grid(row = 5, column = 1)
 
         self.texture_assets = {}
         nbt_data = None
@@ -836,13 +875,22 @@ class Main:
         def load_item_texture(item):
             if "minecraft:" in item:
                 if not(item in self.texture_assets):
-                    item_texture_path = "assets\\item\\%s.png" % item.split(":")[-1]
-                    item_texture_path_side = "assets\\item\\%s_side.png" % item.split(":")[-1]
-                    item_texture_path_front = "assets\\item\\%s_front.png" % item.split(":")[-1]
+                    if "_slab" in item: item_name = item.split(":")[-1].split("_slab")[0]
+                    elif "_stairs" in item: item_name = item.split(":")[-1].split("_stairs")[0]
+                    elif "_fence" in item: item_name = item.split(":")[-1].split("_fence")[0]
+                    else: item_name = item.split(":")[-1]
+
+                    if "smooth" in item: item_name = item_name.split("smooth_")[1]
+
+                    item_texture_path = "assets\\item\\%s.png" % item_name
+                    item_texture_path_side = "assets\\item\\%s_side.png" % item_name
+                    item_texture_path_front = "assets\\item\\%s_front.png" % item_name
+                    item_texture_path_planks = "assets\\item\\%s_planks.png" % item_name
 
                     if os.path.exists(item_texture_path): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path).resize((46,46)))
                     elif os.path.exists(item_texture_path_side): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path_side).resize((46,46)))
                     elif os.path.exists(item_texture_path_front): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path_front).resize((46, 46)))
+                    elif os.path.exists(item_texture_path_planks): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path_planks).resize((46, 46)))
                     elif "spawn_egg" in item: self.texture_assets[item] = ImageTk.PhotoImage(Image.open("assets\\item\\spawn_egg.png").resize((46, 46)))
                     else: self.texture_assets[item] = item_not_found_image_tk
             else: return -1
@@ -850,38 +898,69 @@ class Main:
         def show_more_information(item):
             if "tag" in item:
                 Tags = "\n"
-                try:
-                    if "Damage" in item["tag"]: Tags += "Damage : %s\n" % str(item["tag"]["Damage"].value)
-                except: Tags += "Damage : ?"
+                if "Damage" in item["tag"]:
+                    try: Tags += "Damage : %s\n" % str(item["tag"]["Damage"].value)
+                    except: Tags += "Damage : ?"
                 if "Enchantments" in item["tag"]:
                     Tags += "Enchanté avec : \n"
-                    for enchant in item["tag"]["Enchantments"]:
-                        Tags += "\t%s (niveau %i)\n" % (enchant[0].value, enchant[1].value)
+                    try:
+                        for enchant in item["tag"]["Enchantments"]: Tags += "- %s (niveau %i)\n" % (enchant["id"].value, enchant["lvl"].value)
+                    except: Tags += "- ?\n"
                 if "display" in item["tag"]:
-                    if "Name" in item["tag"]["display"]: Tags += "Renommée en : %s\n" % item["tag"]["display"]["Name"].value
-                    if "Lore" in item["tag"]["display"]: Tags += "Lore : %s\n" % item["tag"]["display"]["Lore"].value
-                if "SkullOwner" in item["tag"]: Tags += "Tête de : %s\n" % item["tag"]["SkullOwner"].value
-            else: Tags = "Aucune"
+                    if "Name" in item["tag"]["display"]:
+                        try: Tags += "Renommée en : %s\n" % item["tag"]["display"]["Name"].value
+                        except: "Renommée en : ?\n"
+                    if "Lore" in item["tag"]["display"]:
+                        try: Tags += "Lore : %s\n" % item["tag"]["display"]["Lore"].value
+                        except: "Lore : ?\n"
+                if "SkullOwner" in item["tag"]:
+                    try: Tags += "Tête de : %s\n" % item["tag"]["SkullOwner"].value
+                    except: Tags += "Tête de : ?\n"
+                if "BlockEntityTag" in item["tag"]:
+                    Tags += "Contient :\n"
+                    try:
+                        for index, container_item in enumerate(item["tag"]["BlockEntityTag"]["Items"].tags):
+                            try:
+                                if not(load_item_texture(container_item["id"].value) == -1):
+                                    canvas_player_shulker.create_image(
+                                        *self.slot_id_to_canvas_container_9x3[container_item["Slot"].value],
+                                        image=self.texture_assets[container_item["id"].value], anchor="nw",
+                                        tags="slot_shulker-%i" % index)
+
+                                    canvas_player_shulker.create_text(
+                                        *[x + 48 for x in self.slot_id_to_canvas_container_9x3[container_item["Slot"].value]],
+                                        text=str(container_item["Count"].value), font=("System", 18), anchor="se",
+                                        fill="white", tags="slot_shulker-%i" % index)
+
+                                    canvas_player_shulker.tag_bind("slot_shulker-%i" % index, "<Button-1>",
+                                                                    lambda e, item=container_item: show_more_information(item))
+
+                            except Exception as e:
+                                print("Inventaire : " + str(e))
+                    except: Tags += "?\n"
+            else: Tags = "Aucun"
 
             label_item_information.config(text = "Nom de l'objet : %s\n" % item["id"].value +\
                                           "Quantité : %i\n" % item["Count"].value +\
                                           "Tags : %s\n" % Tags)
 
-        for item in nbt_data["Inventory"].tags:
+        for index, item in enumerate(nbt_data["Inventory"].tags):
             try:
-                if not(load_item_texture(item["id"].value) == -1):
-                    canvas_item_ID = canvas_player_inventory.create_image(*self.slot_id_to_canvas_inventory[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw")
-                    canvas_player_inventory.tag_bind(canvas_item_ID, "<Button-1>", lambda e, item = item: show_more_information(item))
-                    canvas_player_inventory.create_text(*[x + 48 for x in self.slot_id_to_canvas_inventory[item["Slot"].value]], text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white")
+                if not(load_item_texture(item) == -1):
+                    canvas_player_inventory.create_image(*self.slot_id_to_canvas_inventory[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw", tags = "slot-%i" % index)
+                    canvas_player_inventory.create_text(*[x + 48 for x in self.slot_id_to_canvas_inventory[item["Slot"].value]],
+                                                        text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white", tags = "slot-%i" % index)
+                    canvas_player_inventory.tag_bind("slot-%i" % index, "<Button-1>", lambda e, item = item: show_more_information(item))
             except Exception as e:
                 print("Inventaire : " + str(e))
 
-        for item in nbt_data["EnderItems"].tags:
+        for index, item in enumerate(nbt_data["EnderItems"].tags):
             try:
                 if not(load_item_texture(item["id"].value) == -1):
-                    canvas_item_ID = canvas_player_enderchest.create_image(*self.slot_id_to_canvas_enderchest[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw")
-                    canvas_player_enderchest.tag_bind(canvas_item_ID, "<Button-1>", lambda e, item=item: show_more_information(item))
-                    canvas_player_enderchest.create_text(*[x + 48 for x in self.slot_id_to_canvas_enderchest[item["Slot"].value]], text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white")
+                    canvas_player_enderchest.create_image(*self.slot_id_to_canvas_container_9x3[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw", tags = "slot-%i" % index)
+                    canvas_player_enderchest.create_text(*[x + 48 for x in self.slot_id_to_canvas_container_9x3[item["Slot"].value]],
+                                                         text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white", tags = "slot-%i" % index)
+                    canvas_player_enderchest.tag_bind("slot-%i" % index, "<Button-1>", lambda e, item=item: show_more_information(item))
             except Exception as e:
                 print("Enderchest : " + str(e))
 
@@ -890,7 +969,7 @@ class Main:
         if "Health" in nbt_data: player_metadata_text += "Vie : %i / 20\n" % nbt_data["Health"].value
         if "SpawnX" in nbt_data: player_metadata_text += "Spawnpoint : x = %i | y = %i | z = %i\n" % (nbt_data["SpawnX"].value, nbt_data["SpawnY"].value, nbt_data["SpawnZ"].value)
 
-        Label(toplevel_messagebox_player_inventory, text = player_metadata_text, font =("System", 8)).grid(row = 3, column = 2)
+        Label(toplevel_messagebox_player_inventory, text = player_metadata_text, font =("System", 8)).grid(row = 5, column = 2)
 
 main = Main()
 mainloop()
