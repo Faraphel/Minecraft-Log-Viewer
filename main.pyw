@@ -1,14 +1,18 @@
 from tkinter import *
 from PIL import Image, ImageTk
+from base64 import decodebytes
 from tkinter import filedialog
 from tkinter import messagebox
 from tkinter import ttk
 from threading import Thread
 from io import BytesIO
 import urllib.request
+import subprocess
+import paramiko
 import calendar
 import zipfile
 import ftplib
+import pysftp
 import gzip
 import glob
 import json
@@ -47,10 +51,12 @@ class Main:
         self.frame_button_game_dir_action = Frame(self.frame_game_dir)
         self.frame_button_game_dir_action.grid(row = 3, column = 1, columnspan = 2, sticky = "NEWS")
         Button(self.frame_button_game_dir_action, text="Recherche", command=lambda: Thread(target = option_calendar).start(), relief=RIDGE).grid(row = 1, column = 1)
-        Button(self.frame_button_game_dir_action, text="Recherche avancé", command=self.search_log, relief=RIDGE).grid(row=1, column=2)
-        Button(self.frame_button_game_dir_action, text="Connection via FTP...", command=self.connect_ftp, relief=RIDGE).grid(row=1, column=3)
+        Button(self.frame_button_game_dir_action, text="Recherche avancée", command=self.search_log, relief=RIDGE).grid(row=1, column=2)
+        Button(self.frame_button_game_dir_action, text="Connexion via FTP...", command=self.connect_ftp, relief=RIDGE).grid(row=1, column=3)
 
         self.progressbar_game_dir = ttk.Progressbar(self.frame_game_dir)
+
+        self.variable_use_SFTP = BooleanVar(value=True)
 
         self.variable_search_screenshot_only = BooleanVar(value = False)
         self.variable_search_replay_only = BooleanVar(value = False)
@@ -172,7 +178,7 @@ class Main:
         self.scrollbar_canvas_screenshot.grid(row = 1, column = 2, sticky = "NS")
 
         self.canvas_screenshot = Canvas(self.frame_screenshot_intersect, height = 950, bg = "lightgray",
-                                        yscrollcommand = self.scrollbar_canvas_screenshot.set, scrollregion=(0,0,0,10000))
+                                        yscrollcommand = self.scrollbar_canvas_screenshot.set)
         self.canvas_screenshot.grid(row = 1, column = 1, sticky = "NS")
         self.scrollbar_canvas_screenshot.config(command=self.canvas_screenshot.yview)
 
@@ -182,7 +188,7 @@ class Main:
         self.scrollbar_canvas_replay.grid(row=1, column=2, sticky="NS")
 
         self.canvas_replay = Canvas(self.frame_replay_intersect, height=950, bg="lightgray",
-                                        yscrollcommand=self.scrollbar_canvas_replay.set, scrollregion=(0,0,0,10000))
+                                        yscrollcommand=self.scrollbar_canvas_replay.set)
         self.canvas_replay.grid(row=1, column=1, sticky="NS")
         self.scrollbar_canvas_replay.config(command=self.canvas_replay.yview)
 
@@ -192,7 +198,7 @@ class Main:
         self.scrollbar_canvas_player.grid(row=1, column=2, sticky="NS")
 
         self.canvas_player = Canvas(self.frame_player_intersect, height=950, bg="lightgray",
-                                    yscrollcommand=self.scrollbar_canvas_player.set, scrollregion=(0, 0, 0, 10000))
+                                    yscrollcommand=self.scrollbar_canvas_player.set)
         self.canvas_player.grid(row=1, column=1, sticky="NS")
         self.scrollbar_canvas_player.config(command=self.canvas_player.yview)
 
@@ -226,6 +232,8 @@ class Main:
                 with open(self.path + "\\server.properties", "r") as file:
                     self.world_name = file.read().split("level-name=")[-1].split("\n")[0]
                     self.frame_player_intersect.grid(row=1, column=5, rowspan=3, sticky="NS")
+                    self.frame_replay_intersect.grid_forget()
+                    self.frame_screenshot_intersect.grid_forget()
 
                 if os.path.exists(self.path + "\\%s\\playerdata\\" % self.world_name):
                     self.player_list = os.listdir(self.path + "\\%s\\playerdata\\" % self.world_name)
@@ -235,17 +243,28 @@ class Main:
         else:
             for tentative in range(5):
                 try:
-                    server_properties_data = BytesIO()
-                    self.server_FTP.retrbinary("RETR server.properties", server_properties_data.write)
-                    server_properties_data.seek(0)
-                    self.world_name = server_properties_data.read().decode().split("level-name=")[-1].split("\n")[0][:-1]
+                    if not(self.variable_use_SFTP.get()):
+                        server_properties_data = BytesIO()
+                        self.server_FTP.retrbinary("RETR server.properties", server_properties_data.write)
+                        server_properties_data.seek(0)
+                    else:
+                        server_properties_data = self.server_FTP.open("server.properties", "rb")
+
+                    self.world_name = server_properties_data.read().decode().split("level-name=")[-1].split("\n")[0]
                     self.frame_player_intersect.grid(row=1, column=5, rowspan=3, sticky="NS")
+                    self.frame_replay_intersect.grid_forget()
+                    self.frame_screenshot_intersect.grid_forget()
+
                     break
+
                 except Exception as e: print("Tentative %i (server.properties) (%s)" % (tentative, str(e)))
 
             for tentative in range(5):
                 try:
-                    self.player_list = [os.path.basename(x) for x in self.server_FTP.nlst(self.world_name + "/playerdata/")]
+                    if not(self.variable_use_SFTP.get()): player_file_list = self.server_FTP.nlst(self.world_name.replace("\r", "") + "/playerdata/")
+                    else: player_file_list = self.server_FTP.listdir(self.world_name + "/playerdata/")
+
+                    self.player_list = [os.path.basename(x) for x in player_file_list]
                     self.progressbar_messagebox_ftp.config(maximum=len(self.player_list) + 1)
                     break
                 except Exception as e: print("Tentative %i (playerdata) (%s)" % (tentative, str(e)))
@@ -269,11 +288,11 @@ class Main:
                     if not(func_log_sort_selection(file = file)): continue
 
                     if self.variable_search_screenshot_only.get():
-                        if not(self.find_screenshot(year,month,day, 0, 0, 0, 24, 0, 0) > 0): # Timestamp Max # Si il n'a pas de screenshot associé.
+                        if not(self.find_screenshot(year,month,day, 0, 24 * 3600) > 0): # Timestamp Max # Si il n'a pas de screenshot associé.
                             continue
 
                     if self.variable_search_replay_only.get():
-                        if not(self.find_replay(year,month,day, 0, 0, 0, 24, 0, 0) > 0): # Timestamp Max # Si il n'a pas de replay associé.
+                        if not(self.find_replay(year,month,day, 0, 24 * 3600) > 0): # Timestamp Max # Si il n'a pas de replay associé.
                             continue
 
 
@@ -305,6 +324,7 @@ class Main:
 
             self.progressbar_game_dir.step()
 
+        index = 0
         for index, player_uuid in enumerate(self.player_list):
             try:
                 request = urllib.request.urlopen("https://api.mojang.com/user/profiles/%s/names" % player_uuid.replace("-", "").split(".")[0])
@@ -317,6 +337,8 @@ class Main:
 
             if ftp_log_list: self.progressbar_messagebox_ftp.step()
             self.progressbar_game_dir.step()
+
+        self.canvas_player.config(scrollregion=self.canvas_player.bbox(ALL))
 
     def update_calendar(self, year = None, month = None, mode = "day", ftp_log_list = None):
         """Met à jour l'interface du calendrier"""
@@ -409,7 +431,7 @@ class Main:
 
         for index, file in enumerate(list_log):
 
-            self.dict_button_day_log.append(Button(self.frame_day_log_button, text = os.path.basename(file), command = lambda f=file,cll=ftp_log_list: self.update_log(f,cll)))
+            self.dict_button_day_log.append(Button(self.frame_day_log_button, text = os.path.basename(file), command = lambda f=file: self.update_log(f,ftp_log_list=ftp_log_list)))
             self.dict_button_day_log[-1].grid(row = index + 2, column = 1)
 
             try:
@@ -419,9 +441,11 @@ class Main:
                 else:
                     for tentative in range(5):
                         try:
-                            log_file_data = BytesIO()
-                            self.server_FTP.retrbinary("RETR %s" % file, log_file_data.write)
-                            log_file_data.seek(0)
+                            if not(self.variable_use_SFTP.get()):
+                                log_file_data = BytesIO()
+                                self.server_FTP.retrbinary("RETR %s" % file, log_file_data.write)
+                                log_file_data.seek(0)
+                            else: log_file_data = self.server_FTP.open("logs/%s" % file, "rb")
 
                             with gzip.GzipFile(fileobj = log_file_data) as log_file:
                                 log_line = log_file.readlines()
@@ -487,7 +511,7 @@ class Main:
 
                     else: self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], line_text), "chat_message")
 
-                elif "Connecting to " in line: self.text_log_read_data.insert(END, "%s Connection à %s\n" %
+                elif "Connecting to " in line: self.text_log_read_data.insert(END, "%s Connexion à %s\n" %
                                                                               (line[:10], "".join(line.split("Connecting to ")[1:])),
                                                                               "server_connection")
 
@@ -512,7 +536,7 @@ class Main:
         """Met à jour l'interface affichant les différents logs"""
         first_hour,first_min,first_sec = self.timestamp_to_hms(first_timestamp)
         last_hour,last_min,last_sec = self.timestamp_to_hms(last_timestamp)
-        # Permet d'afficher un mode simplifier pemettant de voir les connections / déconnection
+        # Permet d'afficher un mode simplifier pemettant de voir les connexions / déconnexion
         self.frame_log_read.grid(row = 3, column = 1, columnspan = 2)
         self.label_log_read_metadata.config(text = "Nom du fichier : %s\nDate : %02i/%02i/%04i %02i:%02i:%02i" %
                                             (file,day,month,year,first_hour,first_min,first_sec))
@@ -522,9 +546,11 @@ class Main:
         else:
             for tentative in range(5):
                 try:
-                    log_file_data = BytesIO()
-                    self.server_FTP.retrbinary("RETR /logs/%s" % os.path.basename(file), log_file_data.write)
-                    log_file_data.seek(0)
+                    if not(self.variable_use_SFTP.get()):
+                        log_file_data = BytesIO()
+                        self.server_FTP.retrbinary("RETR /logs/%s" % os.path.basename(file), log_file_data.write)
+                        log_file_data.seek(0)
+                    else: log_file_data = self.server_FTP.open("logs/%s" % os.path.basename(file), "rb")
 
                     with gzip.GzipFile(fileobj=log_file_data) as log_file:
                         log_data = log_file.read().decode("cp1252")
@@ -538,7 +564,7 @@ class Main:
         self.button_log_read_format_server.config(command = lambda format = "server": self.update_read_log_format(format, log_data))
 
         self.update_read_log_format(self.last_format_used, log_data)
-        self.intersect_otherdata(year,month,day,first_timestamp,last_timestamp)
+        if not (ftp_log_list): self.intersect_otherdata(year,month,day,first_timestamp,last_timestamp)
 
     def find_screenshot(self,year,month,day,first_timestamp,last_timestamp,update_canvas=False):
         first_hour,first_min,first_sec = self.timestamp_to_hms(first_timestamp)
@@ -568,6 +594,7 @@ class Main:
                     self.canvas_screenshot.tag_bind(canvas_image_ID, "<Button-1>", lambda event, file=file: os.startfile(file))
                 index += 1
 
+        self.canvas_screenshot.config(scrollregion=self.canvas_screenshot.bbox(ALL))
         return index
 
     def find_replay(self,year,month,day,first_timestamp,last_timestamp,update_canvas=False):
@@ -597,7 +624,6 @@ class Main:
                             replay_metadata = json.load(replay_metadata_file)
 
                     replay_duration_hour, replay_duration_min, replay_duration_sec = self.timestamp_to_hms(replay_metadata["duration"] // 1000)
-
                     self.canvas_replay.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=filename, font=("System", 18))
                     self.canvas_replay.create_text(canvas_width / 2, 100 * (index + 1),
                                                    text="IP du serveur : %s\n" % (replay_metadata["serverName"]) + \
@@ -605,7 +631,10 @@ class Main:
                                                         "Durée : %02i:%02i:%02i\n" % (
                                                         replay_duration_hour, replay_duration_min, replay_duration_sec),
                                                    font=("System", 16))
-                index += 1
+
+                index += 1 # On n'utilise pas d'enumerate parce que ce compteur ne doit être incrémenter que si la condition est remplie
+
+        self.canvas_replay.config(scrollregion=self.canvas_replay.bbox(ALL))
         return index
 
     def intersect_otherdata(self,year,month,day,first_timestamp,last_timestamp):
@@ -657,7 +686,7 @@ class Main:
 
         search_option = {
             "Tout les logs": lambda file: True,
-            "Rechercher les connections à un serveur": search_by_server,
+            "Rechercher les connexions à un serveur": search_by_server,
             "Rechercher un pseudo, un mot, un terme, une phrase": search_by_term,
         } # Différent moyen de trie associer à leur fonction
 
@@ -735,7 +764,7 @@ class Main:
         entry_ftp_host_ip.grid(row = 1, column = 2)
         Label(toplevel_messagebox_ftp, text="Port : ").grid(row=1, column=3)
         entry_ftp_host_port = Entry(toplevel_messagebox_ftp, font = ("System", 18))
-        entry_ftp_host_port.insert(END, "21")
+        entry_ftp_host_port.insert(END, "22")
         entry_ftp_host_port.grid(row = 1, column = 4)
 
         Label(toplevel_messagebox_ftp, text="Utilisateur : ").grid(row=2, column=1)
@@ -751,22 +780,49 @@ class Main:
             toplevel_messagebox_ftp.destroy()
 
         def connexion():
-            host_ip, host_port = entry_ftp_host_ip.get(), int(entry_ftp_host_port.get())
+            host_ip, host_port = entry_ftp_host_ip.get(), entry_ftp_host_port.get()
             user, password = entry_ftp_user.get(), entry_ftp_password.get()
 
-            self.server_FTP = ftplib.FTP()
-            try: self.server_FTP.connect(host_ip, host_port)
-            except:
-                messagebox.showerror("Erreur", "L'hôte n'a pas été trouvé")
-                return -1
-            try:
-                self.server_FTP.login(user, password)
-            except:
-                messagebox.showerror("Erreur", "Les identifiants ne sont pas correct")
-                return -1
+            if not(self.variable_use_SFTP.get()):
+                self.server_FTP = ftplib.FTP()
+
+                try: self.server_FTP.connect(host_ip, int(host_port))
+                except:
+                    messagebox.showerror("Erreur", "L'hôte n'a pas été trouvé")
+                    return -1
+                try: self.server_FTP.login(user, password)
+                except:
+                    messagebox.showerror("Erreur", "Les identifiants ne sont pas correct")
+                    return -1
+
+                try: ftp_log_list = self.server_FTP.nlst("logs/")
+                except:
+                    messagebox.showerror("Erreur", "Ce serveur ne contient pas de dossier /logs/")
+                    return -1
+            else:
+                try:
+                    process = subprocess.Popen(["ssh-keyscan", "-t", "rsa", "-p", str(host_port), host_ip], stdout=subprocess.PIPE, shell=True)
+                    hash_type, keydata = process.communicate()[0].split(b" ")[1:] # Le premier est l'ip de nouveau, mais avec le port dans un mauvais format, donc [1:]
+                    key = paramiko.RSAKey(data=decodebytes(keydata))
+                    cnopts = pysftp.CnOpts("known_hosts")
+                    cnopts.hostkeys.add(host_ip, hash_type, key)
+                except Exception as e:
+                    messagebox.showerror("Erreur", "Une erreur est survenue pendant la récupération de la clé RSA\n"+\
+                                         "\nPlus d'information sur l'erreur : \n\n%s" % str(e))
+                    return -1
+
+                try: self.server_FTP = pysftp.Connection(host_ip, username=user, password=password, cnopts=cnopts, port = int(host_port))
+                except Exception as e:
+                    messagebox.showerror("Erreur", "Une erreur est survenue pendant la connexion au serveur, \n" +\
+                                         "vérifier vos identifiants.\n\n Plus d'information sur l'erreur :\n\n%s" % str(e))
+                    return -1
+
+                try: ftp_log_list = self.server_FTP.listdir("logs/")
+                except:
+                    messagebox.showerror("Erreur", "Ce serveur ne contient pas de dossier /logs/")
+                    return -1
 
             try:
-                ftp_log_list = self.server_FTP.nlst("logs/")
                 self.progressbar_messagebox_ftp.step()
                 for tentative in range(1, 5 + 1):
                     if self.update_log_data(ftp_log_list = ftp_log_list) == -1:
@@ -797,8 +853,9 @@ class Main:
         frame_messagebox_ftp_action_bar = Frame(toplevel_messagebox_ftp)
         frame_messagebox_ftp_action_bar.grid(row = 3, column = 1, columnspan = 4, sticky = "NEWS")
         frame_messagebox_ftp_action_bar.columnconfigure(2, weight = 1)
-        Button(frame_messagebox_ftp_action_bar, text = "Retour", relief = RIDGE, command = back).grid(row = 3, column = 1, sticky = "NEWS")
-        Button(frame_messagebox_ftp_action_bar, text = "Connexion", relief = RIDGE, command = lambda: Thread(target=pre_connexion).start()).grid(row = 3, column = 3, sticky = "NEWS")
+        Button(frame_messagebox_ftp_action_bar, text = "Retour", relief = RIDGE, command = back).grid(row = 1, column = 1, sticky = "NEWS")
+        Button(frame_messagebox_ftp_action_bar, text = "Connexion", relief = RIDGE, command = lambda: Thread(target=pre_connexion).start()).grid(row = 1, column = 3, sticky = "NEWS")
+        Checkbutton(frame_messagebox_ftp_action_bar, text = "Utiliser le protocole SFTP", variable = self.variable_use_SFTP).grid(row = 1, column = 2)
 
         self.progressbar_messagebox_ftp = ttk.Progressbar(toplevel_messagebox_ftp)
 
@@ -819,6 +876,7 @@ class Main:
 
         item_not_found_image = Image.open("assets\\not_found_icon.png").resize((46,46))
         item_not_found_image_tk = ImageTk.PhotoImage(item_not_found_image)
+
         container_9x3_image = Image.open("assets\\container_9x3.png").resize((500, 250))
         self.container_9x3_image_tk = ImageTk.PhotoImage(container_9x3_image)
 
@@ -859,9 +917,12 @@ class Main:
         else:
             for tentative in range(5):
                 try:
-                    nbt_data_file = BytesIO()
-                    self.server_FTP.retrbinary("RETR " + self.world_name + "/playerdata/" + player_uuid, nbt_data_file.write)
-                    nbt_data_file.seek(0)
+                    if not(self.variable_use_SFTP.get()):
+                        nbt_data_file = BytesIO()
+                        self.server_FTP.retrbinary("RETR " + self.world_name[:-1] + "/playerdata/" + player_uuid, nbt_data_file.write) # [:-1 car le dernier caractère est un \n]
+                        nbt_data_file.seek(0)
+                    else: nbt_data_file = self.server_FTP.open(self.world_name + "/playerdata/" + player_uuid, "rb")
+
                     nbt_data = nbt.nbt.NBTFile(fileobj = nbt_data_file)
                     break
                 except Exception as e:
@@ -919,20 +980,22 @@ class Main:
                 if "BlockEntityTag" in item["tag"]:
                     Tags += "Contient :\n"
                     try:
+                        canvas_player_shulker.delete(ALL)
+                        canvas_player_shulker.create_image(width_container_9x3 // 2, height_container_9x3 // 2, image=self.container_9x3_image_tk)
                         for index, container_item in enumerate(item["tag"]["BlockEntityTag"]["Items"].tags):
                             try:
                                 if not(load_item_texture(container_item["id"].value) == -1):
                                     canvas_player_shulker.create_image(
                                         *self.slot_id_to_canvas_container_9x3[container_item["Slot"].value],
                                         image=self.texture_assets[container_item["id"].value], anchor="nw",
-                                        tags="slot_shulker-%i" % index)
+                                        tags="slot-shulker-%i" % index)
 
                                     canvas_player_shulker.create_text(
                                         *[x + 48 for x in self.slot_id_to_canvas_container_9x3[container_item["Slot"].value]],
                                         text=str(container_item["Count"].value), font=("System", 18), anchor="se",
-                                        fill="white", tags="slot_shulker-%i" % index)
+                                        fill="white", tags="slot-shulker-%i" % index)
 
-                                    canvas_player_shulker.tag_bind("slot_shulker-%i" % index, "<Button-1>",
+                                    canvas_player_shulker.tag_bind("slot-shulker-%i" % index, "<Button-1>",
                                                                     lambda e, item=container_item: show_more_information(item))
 
                             except Exception as e:
@@ -946,21 +1009,21 @@ class Main:
 
         for index, item in enumerate(nbt_data["Inventory"].tags):
             try:
-                if not(load_item_texture(item) == -1):
-                    canvas_player_inventory.create_image(*self.slot_id_to_canvas_inventory[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw", tags = "slot-%i" % index)
+                if not(load_item_texture(item["id"].value) == -1):
+                    canvas_player_inventory.create_image(*self.slot_id_to_canvas_inventory[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw", tags = "slot-inventory-%i" % index)
                     canvas_player_inventory.create_text(*[x + 48 for x in self.slot_id_to_canvas_inventory[item["Slot"].value]],
-                                                        text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white", tags = "slot-%i" % index)
-                    canvas_player_inventory.tag_bind("slot-%i" % index, "<Button-1>", lambda e, item = item: show_more_information(item))
+                                                        text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white", tags = "slot-inventory-%i" % index)
+                    canvas_player_inventory.tag_bind("slot-inventory-%i" % index, "<Button-1>", lambda e, item = item: show_more_information(item))
             except Exception as e:
                 print("Inventaire : " + str(e))
 
         for index, item in enumerate(nbt_data["EnderItems"].tags):
             try:
                 if not(load_item_texture(item["id"].value) == -1):
-                    canvas_player_enderchest.create_image(*self.slot_id_to_canvas_container_9x3[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw", tags = "slot-%i" % index)
+                    canvas_player_enderchest.create_image(*self.slot_id_to_canvas_container_9x3[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw", tags = "slot-enderchest-%i" % index)
                     canvas_player_enderchest.create_text(*[x + 48 for x in self.slot_id_to_canvas_container_9x3[item["Slot"].value]],
-                                                         text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white", tags = "slot-%i" % index)
-                    canvas_player_enderchest.tag_bind("slot-%i" % index, "<Button-1>", lambda e, item=item: show_more_information(item))
+                                                         text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white", tags = "slot-enderchest-%i" % index)
+                    canvas_player_enderchest.tag_bind("slot-enderchest-%i" % index, "<Button-1>", lambda e, item=item: show_more_information(item))
             except Exception as e:
                 print("Enderchest : " + str(e))
 
