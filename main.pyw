@@ -758,21 +758,74 @@ class Main:
         try: self.root.iconbitmap("icon.ico")
         except: pass
 
-        Label(toplevel_messagebox_ftp, text = "IP du serveur : ").grid(row = 1, column = 1)
+        self.variable_ftp_server_saved = {}
+        def load_ftp_server_saved():
+            if os.path.exists("ftp_server_saved.json"):
+                try:
+                    with open("ftp_server_saved.json", "r") as file:
+                        self.variable_ftp_server_saved = json.load(file)
+                except Exception as e: print(e)
+
+        load_ftp_server_saved()
+
+        def save_ftp_server_saved(data = None):
+            if data: self.variable_ftp_server_saved[data["ip"]] = data
+            with open("ftp_server_saved.json", "w") as file: json.dump(self.variable_ftp_server_saved, file)
+            combobox_ftp_server_saved.config(values = list(self.variable_ftp_server_saved.keys()))
+
+        def load_ftp_server_selected():
+            selected_ftp_server_profil = combobox_ftp_server_saved.get()
+            ftp_server_data = self.variable_ftp_server_saved[selected_ftp_server_profil]
+
+            entry_ftp_host_ip.delete(0, END)
+            entry_ftp_host_ip.insert(END, ftp_server_data["ip"])
+            entry_ftp_host_port.delete(0, END)
+            entry_ftp_host_port.insert(END, ftp_server_data["port"])
+            entry_ftp_user.delete(0, END)
+            entry_ftp_user.insert(END, ftp_server_data["user"])
+            self.variable_use_SFTP.set(ftp_server_data["use_sftp"])
+
+        def delete_ftp_server_selected():
+            selected_ftp_server_profil = combobox_ftp_server_saved.get()
+            self.variable_ftp_server_saved.pop(selected_ftp_server_profil)
+            save_ftp_server_saved()
+            if len(list(self.variable_ftp_server_saved.keys())) > 0: combobox_ftp_server_saved.current(0)
+            else: combobox_ftp_server_saved.delete(0, END)
+
+        frame_ftp_server_saved = Frame(toplevel_messagebox_ftp)
+        frame_ftp_server_saved.grid(row = 1, column = 1, columnspan = 4)
+
+        Label(frame_ftp_server_saved, text = "Serveur enregistré : ", font = ("System", 18)).grid(row = 1, column = 1)
+        combobox_ftp_server_saved = ttk.Combobox(frame_ftp_server_saved, values = list(self.variable_ftp_server_saved.keys()), font = ("System", 18))
+        combobox_ftp_server_saved.grid(row = 1, column = 2)
+        if len(list(self.variable_ftp_server_saved.keys())) > 0: combobox_ftp_server_saved.current(0)
+
+        Button(frame_ftp_server_saved, text="Charger", font = ("System", 16), relief = RIDGE, command = load_ftp_server_selected).grid(row=1, column=3, sticky = "NEWS")
+
+        Button(frame_ftp_server_saved, text="Sauver", font = ("System", 16), relief = RIDGE, command = lambda: save_ftp_server_saved(
+            {"ip": entry_ftp_host_ip.get(),
+             "port": entry_ftp_host_port.get(),
+             "user": entry_ftp_user.get(),
+             "use_sftp": self.variable_use_SFTP.get()})
+               ).grid(row=1, column=4, sticky = "NEWS")
+
+        Button(frame_ftp_server_saved, text="Supprimer", font = ("System", 16), relief = RIDGE, command = delete_ftp_server_selected).grid(row=1, column=5, sticky = "NEWS")
+
+        Label(toplevel_messagebox_ftp, text = "IP du serveur : ").grid(row = 2, column = 1)
         entry_ftp_host_ip = Entry(toplevel_messagebox_ftp, font = ("System", 18))
         entry_ftp_host_ip.insert(END, "127.0.0.1")
-        entry_ftp_host_ip.grid(row = 1, column = 2)
-        Label(toplevel_messagebox_ftp, text="Port : ").grid(row=1, column=3)
+        entry_ftp_host_ip.grid(row = 2, column = 2)
+        Label(toplevel_messagebox_ftp, text="Port : ").grid(row=2, column=3)
         entry_ftp_host_port = Entry(toplevel_messagebox_ftp, font = ("System", 18))
         entry_ftp_host_port.insert(END, "22")
-        entry_ftp_host_port.grid(row = 1, column = 4)
+        entry_ftp_host_port.grid(row = 2, column = 4)
 
-        Label(toplevel_messagebox_ftp, text="Utilisateur : ").grid(row=2, column=1)
+        Label(toplevel_messagebox_ftp, text="Utilisateur : ").grid(row=3, column=1)
         entry_ftp_user = Entry(toplevel_messagebox_ftp, font=("System", 18))
-        entry_ftp_user.grid(row=2, column=2)
-        Label(toplevel_messagebox_ftp, text="Mot de passe : ").grid(row=2, column=3)
+        entry_ftp_user.grid(row=3, column=2)
+        Label(toplevel_messagebox_ftp, text="Mot de passe : ").grid(row=3, column=3)
         entry_ftp_password = Entry(toplevel_messagebox_ftp, font=("System", 18), show = "*")
-        entry_ftp_password.grid(row=2, column=4)
+        entry_ftp_password.grid(row=3, column=4)
 
         def back():
             """fonction appelé par le bouton retour"""
@@ -784,9 +837,9 @@ class Main:
             user, password = entry_ftp_user.get(), entry_ftp_password.get()
 
             if not(self.variable_use_SFTP.get()):
-                self.server_FTP = ftplib.FTP()
+                self.server_FTP = ftplib.FTP(timeout = 15)
 
-                try: self.server_FTP.connect(host_ip, int(host_port))
+                try: self.server_FTP.connect(host_ip, int(host_port), timeout = 15)
                 except:
                     messagebox.showerror("Erreur", "L'hôte n'a pas été trouvé")
                     return -1
@@ -843,15 +896,15 @@ class Main:
 
         def pre_connexion():
             frame_messagebox_ftp_action_bar.grid_forget()
-            self.progressbar_messagebox_ftp.grid(row = 3, column = 1, columnspan = 4, sticky = "NEWS")
+            self.progressbar_messagebox_ftp.grid(row = 4, column = 1, columnspan = 4, sticky = "NEWS")
 
             if connexion() == -1:
-                frame_messagebox_ftp_action_bar.grid(row = 3, column = 1, columnspan = 4, sticky = "NEWS")
+                frame_messagebox_ftp_action_bar.grid(row = 4, column = 1, columnspan = 4, sticky = "NEWS")
                 self.progressbar_messagebox_ftp.grid_forget()
 
 
         frame_messagebox_ftp_action_bar = Frame(toplevel_messagebox_ftp)
-        frame_messagebox_ftp_action_bar.grid(row = 3, column = 1, columnspan = 4, sticky = "NEWS")
+        frame_messagebox_ftp_action_bar.grid(row = 4, column = 1, columnspan = 4, sticky = "NEWS")
         frame_messagebox_ftp_action_bar.columnconfigure(2, weight = 1)
         Button(frame_messagebox_ftp_action_bar, text = "Retour", relief = RIDGE, command = back).grid(row = 1, column = 1, sticky = "NEWS")
         Button(frame_messagebox_ftp_action_bar, text = "Connexion", relief = RIDGE, command = lambda: Thread(target=pre_connexion).start()).grid(row = 1, column = 3, sticky = "NEWS")
