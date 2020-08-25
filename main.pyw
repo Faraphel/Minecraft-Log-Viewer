@@ -110,6 +110,9 @@ class Main:
         for month in range(1, 12 + 1):
             self.dict_button_month_calendar.insert(month, Button(self.labelframe_calendar, text=month, width = 6, height=3, relief=RIDGE))
 
+        self.button_global_statistic = Button(self.frame_calendar_log, text = "Statistiques globales", relief=RIDGE)
+        self.button_global_statistic.grid(row=4, column=1, columnspan=3, sticky = "NEWS")
+
         self.frame_day_log = Frame(self.root)
 
         self.label_day_total_log = Label(self.frame_day_log)
@@ -138,11 +141,17 @@ class Main:
         self.button_log_read_format_server = Button(self.frame_log_read_format, text="Serveur", relief = RIDGE)
         self.button_log_read_format_server.grid(row = 1, column = 3)
 
+        self.variable_log_read_search = StringVar()
+        self.entry_log_read_search = Entry(self.frame_log_read, font = ("System", 12), width = 30, fg="gray70")
+        self.entry_log_read_search.insert(0, "Faire une recherche")
+        self.entry_log_read_search.grid(row = 3, column = 1, columnspan = 2, sticky = "E")
+        self.entry_log_read_search.bind("<Key>", self.reset_log_read_search)
+
         self.scrollbar_text_log_read = Scrollbar(self.frame_log_read)
-        self.scrollbar_text_log_read.grid(row = 3, column = 2, sticky = "NS")
+        self.scrollbar_text_log_read.grid(row = 4, column = 2, sticky = "NS")
 
         self.text_log_read_data = Text(self.frame_log_read, width = 100, height = 30, yscrollcommand = self.scrollbar_text_log_read.set)
-        self.text_log_read_data.grid(row=3, column=1,sticky = "NEWS")
+        self.text_log_read_data.grid(row=4, column=1,sticky = "NEWS")
 
         self.text_log_read_data.tag_config('chat_message', background="gray10", foreground="white", font=("System", 16))
         self.text_log_read_data.tag_config('server_connection', background="red", foreground="white", font=("System", 16))
@@ -202,6 +211,11 @@ class Main:
         self.canvas_player.grid(row=1, column=1, sticky="NS")
         self.scrollbar_canvas_player.config(command=self.canvas_player.yview)
 
+    def reset_log_read_search(self, event = None):
+        self.variable_log_read_search.set("")
+        self.entry_log_read_search.config(fg = "black", textvariable = self.variable_log_read_search)
+        self.entry_log_read_search.bind("<Key>", lambda event: self.update_read_log_format())
+
     def select_game_dir(self):
         """Demande à l'utilisateur de sélectionner son dossier de jeu (celui dans lequel se trouve le dossier /logs/)"""
         game_dir = filedialog.askdirectory(initialdir=lambda: self.entry_game_dir.get())
@@ -216,6 +230,8 @@ class Main:
         self.latest_log_month = -1
         self.oldest_log_year = -1
         self.oldest_log_month = -1
+        self.total_log = 0
+        self.max_log_total = -1
         self.max_log_total_day = -1
         self.max_log_total_month = -1
         self.path = self.entry_game_dir.get()
@@ -307,8 +323,10 @@ class Main:
                     self.log_metadata.update({year: _month_dict.copy()})
                     del _day_dict, _month_dict
 
+                self.total_log += 1
                 self.log_metadata[year][month][day] += 1
                 self.log_metadata[year][month]["total"] += 1
+                if self.max_log_total < self.log_metadata[year][month][day]: self.max_log_total = self.log_metadata[year][month][day]
                 if self.max_log_total_day < self.log_metadata[year][month][day]: self.max_log_total_day = self.log_metadata[year][month][day]
                 if self.max_log_total_month < self.log_metadata[year][month]["total"]: self.max_log_total_month = self.log_metadata[year][month]["total"]
 
@@ -401,6 +419,9 @@ class Main:
                 else: bg = "lightgray"
                 month_button.config(bg = bg, command = lambda month = index + 1: self.update_calendar(year = year, month = month, mode = "day"))
 
+
+        self.button_global_statistic.config(command = self.global_statistic)
+
     def timestamp_to_hms(self, timestamp):
         hour, rest = divmod(timestamp, 3600)
         min, sec = divmod(rest, 60)
@@ -488,14 +509,21 @@ class Main:
 
             except Exception as e: print(e)
 
-    def update_read_log_format(self, format, log_data):
+    def update_read_log_format(self, format = None, log_data = None):
+        if not(log_data): log_data = self.last_log_data_used
+        if not(format): format = self.last_format_used
+        self.last_log_data_used = log_data
         self.last_format_used = format
         formated_data = ""
         self.text_log_read_data.delete(0.0, END)
 
         if format == "raw":
-            self.text_log_read_data.config(font = ("Purisa", 11), bg = "white", fg = "black")
-            self.text_log_read_data.insert(0.0, log_data)
+            for line in log_data.split("\n"):
+
+                if self.variable_log_read_search.get() in line:
+
+                    self.text_log_read_data.config(font = ("Purisa", 11), bg = "white", fg = "black")
+                    self.text_log_read_data.insert(END, line + "\n")
 
         elif format == "chat":
             self.text_log_read_data.config(font = ("System", 10), bg = "gray10", fg = "white")
@@ -503,13 +531,16 @@ class Main:
             for line in log_data.split("\n"):
                 if "[CHAT]" in line:
                     line_text = "".join(line.split("[CHAT]")[1:])
-                    if "§" in line_text:
-                        self.text_log_read_data.insert(END, line[:10] + " ", "chat_message")
-                        for line_part in line_text.split("§"):
-                            self.text_log_read_data.insert(END, line_part[1:], "§" + line_part[0])
-                        self.text_log_read_data.insert(END, "\n")
 
-                    else: self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], line_text), "chat_message")
+                    if self.variable_log_read_search.get() in line_text: # Si le critère de recherche est bon
+
+                        if "§" in line_text:
+                            self.text_log_read_data.insert(END, line[:10] + " ", "chat_message")
+                            for line_part in line_text.split("§"):
+                                self.text_log_read_data.insert(END, line_part[1:], "§" + line_part[0])
+                            self.text_log_read_data.insert(END, "\n")
+
+                        else: self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], line_text), "chat_message")
 
                 elif "Connecting to " in line: self.text_log_read_data.insert(END, "%s Connexion à %s\n" %
                                                                               (line[:10], "".join(line.split("Connecting to ")[1:])),
@@ -519,16 +550,19 @@ class Main:
             for line in log_data.split("\n"):
                 if "INFO]" in line:
                     line_text = "".join(line.split("INFO]")[1:])
-                    if "§" in line_text:
-                        self.text_log_read_data.insert(END, line[:10] + " ", "chat_message")
-                        for line_part in line_text.split("§"):
-                            self.text_log_read_data.insert(END, line_part[1:], "§" + line_part[0])
-                        self.text_log_read_data.insert(END, "\n")
-                    else:
-                        self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], line_text), "chat_message")
 
-                elif "WARN]" in line:
-                    self.text_log_read_data.insert(END, "%s %s\n" % (line[:10],"".join(line.split("WARN]")[1:])),'server_warn')
+                    if self.variable_log_read_search.get() in line_text:
+
+                        if "§" in line_text:
+                            self.text_log_read_data.insert(END, line[:10] + " ", "chat_message")
+                            for line_part in line_text.split("§"):
+                                self.text_log_read_data.insert(END, line_part[1:], "§" + line_part[0])
+                            self.text_log_read_data.insert(END, "\n")
+                        else:
+                            self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], line_text), "chat_message")
+
+                    elif "WARN]" in line:
+                        self.text_log_read_data.insert(END, "%s %s\n" % (line[:10],"".join(line.split("WARN]")[1:])),'server_warn')
 
         # Lors d'une recherche, le mot afficher est surligné (en jaune ou rouge)
 
@@ -717,6 +751,9 @@ class Main:
             elif search_entry_data == "" and not(search_mode == list(search_option.keys())[0]):
                 messagebox.showerror("Erreur", "Veuillez entrer un filtre")
                 return -1
+
+            self.reset_log_read_search()
+            self.variable_log_read_search.set(search_entry_data)
 
             max_step = len(glob.glob(path + "\\logs\\????-??-??-*.log.gz"))
             progressbar_action_bar.config(maximum = max_step)
@@ -1086,6 +1123,55 @@ class Main:
         if "SpawnX" in nbt_data: player_metadata_text += "Spawnpoint : x = %i | y = %i | z = %i\n" % (nbt_data["SpawnX"].value, nbt_data["SpawnY"].value, nbt_data["SpawnZ"].value)
 
         Label(toplevel_messagebox_player_inventory, text = player_metadata_text, font =("System", 8)).grid(row = 5, column = 2)
+
+    def global_statistic(self):
+        toplevel_messagebox_global_statistic = Toplevel(self.root)  # Nouvelle fenêtre pour ne pas surchargé l'interface principal
+        toplevel_messagebox_global_statistic.grab_set()  # On empêche d'intéragir avec la fenêtre principal
+        toplevel_messagebox_global_statistic.resizable(width=False, height=False)
+        try: self.root.iconbitmap("icon.ico")
+        except: pass
+
+        canvas_messagebox_global_statistic = Canvas(toplevel_messagebox_global_statistic, width = 500, height = 200)
+        canvas_messagebox_global_statistic.grid(row = 1, column = 1)
+        canvas_messagebox_global_statistic.update()
+
+        width, height = canvas_messagebox_global_statistic.winfo_width(), canvas_messagebox_global_statistic.winfo_height()
+
+        list_year = list(self.log_metadata.keys())
+        first_year = list_year[0]
+        max_year = list_year[-1] - first_year + 1
+
+        for year_index, year in enumerate(range(first_year, first_year + max_year)):
+            if year in self.log_metadata:
+                list_month = list(self.log_metadata[year].keys())
+                max_month = list_month[-1] - list_month[1]
+                for month_index, month in enumerate(self.log_metadata[year]):
+                    list_day = list(self.log_metadata[year][month].keys())
+                    max_day = list_day[-1] - list_day[1]
+                    for day_index, day in enumerate(self.log_metadata[year][month]):
+                        if day != "total":
+                            offset_width = width * year_index / max_year + \
+                                           (width / max_month) * month_index / max_month + \
+                                           (width / (max_month * max_day)) * day_index / (max_month * max_day)
+
+                            offset_next_day = width / (max_month * max_day) ** 2
+
+                            offset_height = height - self.log_metadata[year][month][day] * height // self.max_log_total
+
+                            canvas_messagebox_global_statistic.create_polygon(
+                                offset_width, height,
+                                offset_width, offset_height,
+                                offset_width + offset_next_day, offset_height,
+                                offset_width + offset_next_day, height,
+                                fill = "cyan", outline = "cyan"
+                                )
+
+            canvas_messagebox_global_statistic.create_text(width * (year_index + 0.5) / max_year, height // 2, text = year, angle=90, font = ("Purisa", 18))
+            canvas_messagebox_global_statistic.create_line(width * year_index / max_year, height,
+                                                           width * year_index / max_year, 0,
+                                                           fill = "gray70", dash=(100, 1), width = 2)
+
+            Label(toplevel_messagebox_global_statistic, text = "Nombre total de log : %i" % self.total_log).grid(row = 2, column = 1)
 
 main = Main()
 mainloop()
