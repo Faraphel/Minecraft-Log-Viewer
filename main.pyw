@@ -16,6 +16,7 @@ import pysftp
 import gzip
 import glob
 import json
+import time
 import nbt
 import sys
 import os
@@ -25,7 +26,6 @@ os.chdir(os.path.dirname(os.path.realpath(sys.argv[0]))) # Si un raccourcie est 
 class Main:
     def __init__(self):
         self.root = Tk()
-        self.root.title("inspecteur de logs")
         try: self.root.iconbitmap("icon.ico")
         except: pass
         self.root.resizable(width=False, height=False)
@@ -202,14 +202,71 @@ class Main:
         self.scrollbar_canvas_replay.config(command=self.canvas_replay.yview)
 
         self.frame_player_intersect = LabelFrame(self.root, text="Joueurs")
+        self.frame_player_intersect_action = Frame(self.frame_player_intersect)
+        self.frame_player_intersect_action.grid(row = 1, column = 1, columnspan = 2)
+
+        Label(self.frame_player_intersect_action, text = "Backup : ").grid(row = 1, column = 1)
+        self.combobox_player_backup = ttk.Combobox(self.frame_player_intersect_action)
+        self.combobox_player_backup.grid(row = 1, column = 2)
+
+        self.button_player_save_data = Button(self.frame_player_intersect_action, text="Sauver", relief = RIDGE)
+        self.button_player_save_data.grid(row = 1, column = 3)
+        self.button_player_delete_selected_data = Button(self.frame_player_intersect_action, text="Supprimer", relief = RIDGE)
+        self.button_player_delete_selected_data.grid(row = 1, column = 4)
+        self.button_player_load_selected_data = Button(self.frame_player_intersect_action, text="Charger", relief = RIDGE)
+        self.button_player_load_selected_data.grid(row=1, column=5)
 
         self.scrollbar_canvas_player = Scrollbar(self.frame_player_intersect)
-        self.scrollbar_canvas_player.grid(row=1, column=2, sticky="NS")
+        self.scrollbar_canvas_player.grid(row=2, column=2, sticky="NS")
 
         self.canvas_player = Canvas(self.frame_player_intersect, height=950, bg="lightgray",
                                     yscrollcommand=self.scrollbar_canvas_player.set)
-        self.canvas_player.grid(row=1, column=1, sticky="NS")
+        self.canvas_player.grid(row=2, column=1, sticky="NS")
         self.scrollbar_canvas_player.config(command=self.canvas_player.yview)
+
+        self.frame_player_intersect_action_selected = Frame(self.frame_player_intersect)
+
+        self.button_player_restore_data = Button(self.frame_player_intersect_action_selected, text = "Restaurer", relief = RIDGE, width = 30)
+        self.button_player_restore_data.grid(row = 1, column = 1)
+
+        self.player_selection_list = [] # Si vous sélectionnez des joueurs, il sera à l'intérieur.
+
+        # Système de mise à jour
+        new_version = None
+
+        raw_github_url = "https://raw.githubusercontent.com/raphael60650/Minecraft-Log-Viewer/"
+        github_url = "https://github.com/raphael60650/Minecraft-Log-Viewer/"
+        version_file_path = ".github/version"
+
+        def clean_version_data(version_data):  # Le fichier version peut contenir des données en trop (\n par exemple)
+            cleaned_version = version_data.split("\n")[0]
+            version, subversion = cleaned_version.split(".")  # le format obtenu doit être X.XX
+            version, subversion = int(version), int(subversion)
+            return version, subversion
+
+        try:
+            with open(version_file_path) as actual_version_file:
+                actual_version = actual_version_file.read()
+            v_actual, sv_actual = clean_version_data(actual_version)
+            actual_version = "%i.%i" % (v_actual, sv_actual)
+            self.root.title("Inspecteur de logs (%s)" % actual_version)
+
+            with urllib.request.urlopen(raw_github_url + "master/" + version_file_path) as github_version_file:
+                github_version = github_version_file.read().decode()
+            v_github, sv_github = clean_version_data(github_version)
+
+            if v_github > v_actual or (v_github == v_actual and sv_github > sv_actual): new_version = "%i.%i" % (v_github, sv_github)
+            else: new_version = False
+
+        except Exception as e:
+            print(e)
+
+        if new_version:
+            if messagebox.askyesno("Mise à jour disponible", "Une nouvelle version de l'application est disponible\n" + \
+                                                             "version actuel :\t%s\n" % actual_version + \
+                                                             "nouvelle version :\t%s\n" % new_version + \
+                                                             "Souhaitez-vous l'installer ?"):
+                os.startfile(github_url + "releases")
 
     def reset_log_read_search(self, event = None):
         self.variable_log_read_search.set("")
@@ -236,11 +293,11 @@ class Main:
         self.max_log_total_month = -1
         self.path = self.entry_game_dir.get()
 
-        self.canvas_player.delete(ALL)
         canvas_width = self.canvas_screenshot.winfo_width()
 
         self.world_name = None
         self.player_list = []
+        self.player_backup_list = []
 
         if not(ftp_log_list):
             if os.path.exists(self.path + "\\server.properties"):
@@ -250,9 +307,6 @@ class Main:
                     self.frame_player_intersect.grid(row=1, column=5, rowspan=3, sticky="NS")
                     self.frame_replay_intersect.grid_forget()
                     self.frame_screenshot_intersect.grid_forget()
-
-                if os.path.exists(self.path + "\\%s\\playerdata\\" % self.world_name):
-                    self.player_list = os.listdir(self.path + "\\%s\\playerdata\\" % self.world_name)
 
             else: self.frame_player_intersect.grid_forget()
 
@@ -274,16 +328,6 @@ class Main:
                     break
 
                 except Exception as e: print("Tentative %i (server.properties) (%s)" % (tentative, str(e)))
-
-            for tentative in range(5):
-                try:
-                    if not(self.variable_use_SFTP.get()): player_file_list = self.server_FTP.nlst(self.world_name.replace("\r", "") + "/playerdata/")
-                    else: player_file_list = self.server_FTP.listdir(self.world_name + "/playerdata/")
-
-                    self.player_list = [os.path.basename(x) for x in player_file_list]
-                    self.progressbar_messagebox_ftp.config(maximum=len(self.player_list) + 1)
-                    break
-                except Exception as e: print("Tentative %i (playerdata) (%s)" % (tentative, str(e)))
 
         if not(ftp_log_list):
             if not (os.path.exists(self.path + "\\logs\\")):
@@ -342,21 +386,219 @@ class Main:
 
             self.progressbar_game_dir.step()
 
-        index = 0
-        for index, player_uuid in enumerate(self.player_list):
-            try:
-                request = urllib.request.urlopen("https://api.mojang.com/user/profiles/%s/names" % player_uuid.replace("-", "").split(".")[0])
-                text, font = json.loads(request.read())[-1]["name"], ("System", 18)
-            except: text, font = player_uuid, ("System", 16)
+        self.player_list_path = None
+        if not(ftp_log_list): self.master_player_list_path = self.path + "\\%s\\playerdata\\" % self.world_name
+        elif not(self.variable_use_SFTP.get()): self.master_player_list_path = "\\%s\\playerdata\\" % self.world_name.replace("\r", "")
+        else: self.master_player_list_path = "./%s/playerdata/" % self.world_name
+        self.player_checkbutton_canvas_cache = []
+        self.player_name_cache = {}
 
-            self.canvas_player.create_rectangle(0, 100 * (index), canvas_width, 100 * (index + 1), fill = "gray80", tags = "player-%i" % index)
-            self.canvas_player.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=text, font=font, tags = "player-%i" % index)
-            self.canvas_player.tag_bind("player-%i" % index, "<Button-1>", lambda event, p=player_uuid: self.player_nbt_inventory(player_uuid=p, ftp_log_list=ftp_log_list))
+        def refresh_canvas_player_list(init_canvas = False): # init_canvas est sur vrai si c'est sa première activation
+            if not(self.player_list_path): self.player_list_path = self.master_player_list_path
 
-            if ftp_log_list: self.progressbar_messagebox_ftp.step()
-            self.progressbar_game_dir.step()
+            if self.player_list_path == self.master_player_list_path: is_master = True
+            else: is_master = False
 
-        self.canvas_player.config(scrollregion=self.canvas_player.bbox(ALL))
+            if not(ftp_log_list):
+                if os.path.exists(self.player_list_path):
+                    self.player_list = os.listdir(self.player_list_path)
+                if os.path.exists(self.path + "\\mclogviewer\\%s\\playerdata\\" % self.world_name):
+                    self.player_backup_list = os.listdir(self.path + "\\mclogviewer\\%s\\playerdata\\" % self.world_name)
+
+            else:
+                for tentative in range(5):
+                    try:
+                        if not(self.variable_use_SFTP.get()): player_file_list = self.server_FTP.nlst(self.player_list_path)
+                        else:
+                            try: player_file_list = self.server_FTP.listdir(self.player_list_path)
+                            except: player_file_list = []
+
+                        self.player_list = [os.path.basename(x) for x in player_file_list]
+                        if init_canvas: self.progressbar_messagebox_ftp.config(maximum=len(self.player_list) + 1)
+                        break
+                    except Exception as e: print("Tentative %i (playerdata) (%s)" % (tentative, str(e)))
+
+                for tentative in range(5):
+                    try:
+                        if not(self.variable_use_SFTP.get()):
+                            self.player_backup_list = self.server_FTP.nlst("/mclogviewer/" + self.world_name.replace("\r", "") + "/playerdata/")
+                        else:
+                            try: self.player_backup_list = self.server_FTP.listdir("./mclogviewer/" + self.world_name + "/playerdata/")
+                            except: self.player_backup_list = []
+
+                        self.player_backup_list = [os.path.basename(x) for x in self.player_backup_list]
+                        break
+                    except Exception as e: print("Tentative %i (playerdata backup) (%s)" % (tentative, str(e)))
+
+            self.canvas_player.delete(ALL)
+            index = 0
+            for index, player_uuid in enumerate(self.player_list):
+                try:
+                    if not(player_uuid in self.player_name_cache.keys()):
+                        request = urllib.request.urlopen("https://api.mojang.com/user/profiles/%s/names" % player_uuid.replace("-", "").split(".")[0])
+                        text, font = json.loads(request.read())[-1]["name"], ("System", 18)
+                        self.player_name_cache[player_uuid] = text
+                    else:
+                        text, font = self.player_name_cache[player_uuid], ("System", 18)
+                except: text, font = player_uuid, ("System", 16)
+
+                if player_uuid.split(".")[-1] == "dat_old":
+                    text += " (Ancien)"
+
+                self.canvas_player.create_rectangle(0, 100 * (index), canvas_width, 100 * (index + 1), fill = "gray80", tags = "player-%i" % index)
+                self.canvas_player.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=text, font=font, tags = "player-%i" % index)
+                self.canvas_player.tag_bind("player-%i" % index, "<Button-1>", lambda event, p=player_uuid: self.player_nbt_inventory(p,ftp_log_list))
+
+                def select_player(player_uuid):
+                    self.player_selection_list.append(player_uuid)
+                    refresh_canvas_player_list()
+
+                def unselect_player(player_uuid):
+                    self.player_selection_list.remove(player_uuid)
+                    refresh_canvas_player_list()
+
+                if not(is_master):
+                    self.player_checkbutton_canvas_cache.append(
+                        self.canvas_player.create_rectangle(20, (100 * (index + 0.5)) - 10, 40, (100 * (index + 0.5)) + 10,
+                                                        outline = "black", width = 3, fill = "gray80", tags = "checkbutton-%i" % index))
+
+                    if player_uuid in self.player_selection_list:
+                        self.player_checkbutton_canvas_cache.append(
+                            self.canvas_player.create_line(20, (100 * (index + 0.5)) - 10, 40, (100 * (index + 0.5)) + 10,
+                                                            fill="black", width = 4, tags = "checkbutton-%i" % index))
+
+                        self.canvas_player.tag_bind("checkbutton-%i" % index, "<Button-1>", lambda e, p=player_uuid: unselect_player(p))
+                    else: self.canvas_player.tag_bind("checkbutton-%i" % index, "<Button-1>", lambda e, p=player_uuid: select_player(p))
+
+                if ftp_log_list and init_canvas: self.progressbar_messagebox_ftp.step()
+                if init_canvas: self.progressbar_game_dir.step()
+
+            if is_master: # Si la liste de joueur chargé est celui du jeu, alors :
+                self.frame_player_intersect_action_selected.grid_forget()
+                self.frame_player_intersect.config(text = "Joueurs (actuel)")
+            else:
+                self.frame_player_intersect_action_selected.grid(row=3, column=1, columnspan=2)
+
+                def restore_player():
+                    if messagebox.askyesno("Confirmation", "Etes-vous sûr de vouloir restaurer ces données ?\n" +\
+                                           "(Les données actuelles seront écrasées !)"):
+                        for player in self.player_selection_list:
+                            if not(ftp_log_list):
+                                with open(self.path + "\\%s\\playerdata\\%s" % (self.world_name, player), "wb") as dest_file:
+                                    with open(self.player_list_path + player, "rb") as source_file:
+                                        dest_file.write(source_file.read())
+
+                            elif not(self.variable_use_SFTP.get()):
+                                player_data = BytesIO()
+                                self.server_FTP.retrbinary("RETR " + self.player_list_path + player, player_data.write)
+                                player_data.seek(0)
+                                self.server_FTP.storbinary("STOR /%s/playerdata/%s" % (self.world_name.replace("\r", ""), player), player_data)
+
+                            else:
+                                with self.server_FTP.open(self.player_list_path + player, "rb") as source_file:
+                                    with self.server_FTP.open("./" + self.world_name + "/playerdata/" + player, "wb") as dest_file:
+                                        dest_file.write(source_file.read())
+
+                        self.player_list_path = self.master_player_list_path
+                        refresh_canvas_player_list()
+
+                self.button_player_restore_data.config(command = restore_player)
+                self.frame_player_intersect.config(text="Joueurs (%s)" % os.path.basename(os.path.dirname(self.player_list_path)))
+
+            self.canvas_player.config(scrollregion=self.canvas_player.bbox(ALL))
+
+            self.player_backup_list.insert(0, "actuel")
+            self.combobox_player_backup.config(values=self.player_backup_list)
+            self.combobox_player_backup.current(0)
+
+        refresh_canvas_player_list(True)
+
+        def player_backup_save():
+            date_backup = time.strftime("%Y-%m-%d-%H-%M-%S")
+
+            if not(ftp_log_list):
+                os.makedirs(self.path + "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name, date_backup))
+
+                for player in self.player_list:
+                    with open(self.path + "\\mclogviewer\\%s\\playerdata\\%s\\%s" % (self.world_name, date_backup, player), "wb") as dest_file:
+                        with open(self.path + "\\%s\\playerdata\\%s" % (self.world_name, player), "rb") as orig_file:
+                            dest_file.write(orig_file.read())
+
+            elif not(self.variable_use_SFTP.get()):
+                for tentative in range(5):
+                    try:
+                        path_backup_dir = "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name, date_backup)
+                        prefix_dir = ""
+                        for directory in path_backup_dir.split("\\"):
+                            if not(directory in self.server_FTP.nlst(prefix_dir)):
+                                self.server_FTP.mkd(prefix_dir + directory)
+                            prefix_dir += directory + "\\"
+                    except Exception as e: print("Tentative %i (backup player_data dir) - %s" % (tentative, str(e)))
+
+                path_actual_dir = self.world_name.replace("\r", "") + "/playerdata/"
+                for player in self.player_list:
+                    for tentative in range(5):
+                        try:
+                            player_data = BytesIO()
+                            if not(self.variable_use_SFTP.get()): self.server_FTP.retrbinary("RETR " + path_actual_dir + player, player_data.write)
+                            player_data.seek(0)
+                            self.server_FTP.storbinary("STOR " + path_backup_dir + player, player_data)
+                        except Exception as e: print("Tentative %i (backup player_data files) - %s" % (tentative, str(e)))
+
+            else:
+                try:
+                    path_backup_dir = "./mclogviewer/%s/playerdata/%s/" % (self.world_name, date_backup)
+                    path_actual_dir = "./" + self.world_name + "/playerdata/"
+                    if not(self.server_FTP.exists(path_backup_dir)): self.server_FTP.makedirs(path_backup_dir)
+                    for player in self.player_list:
+                        with self.server_FTP.open(path_actual_dir + player, "rb") as source_file:
+                            with self.server_FTP.open(path_backup_dir + player, "wb") as dest_file:
+                                dest_file.write(source_file.read())
+
+                except PermissionError:
+                    messagebox.showerror("Erreur", "Ce compte n'a pas les permissions nécéssaires.")
+
+            refresh_canvas_player_list()
+
+        def player_backup_delete_selected():
+            selected_player_backup = self.combobox_player_backup.get()
+            if selected_player_backup in self.player_backup_list and selected_player_backup != "actuel":
+
+                if messagebox.askyesno("Confirmer", "Etes vous sur de vouloir supprimer la sauvegarde %s ?" % selected_player_backup):
+                    if not(ftp_log_list):
+                        delete_directory = self.path + "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name, selected_player_backup)
+
+                        for path, dirs, files in os.walk(delete_directory, topdown=False):
+                            for filename in files: os.remove(delete_directory + "\\" + filename)
+                        os.rmdir(delete_directory)
+
+                    elif not(self.variable_use_SFTP.get()):
+                        delete_directory = "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name, selected_player_backup)
+
+                        for filename in self.server_FTP.nlst(delete_directory):
+                            self.server_FTP.delete(delete_directory + "\\" + filename)
+                        self.server_FTP.rmd(delete_directory)
+                    else:
+                        delete_directory = self.path + "./mclogviewer/%s/playerdata/%s/" % (self.world_name, selected_player_backup)
+
+                        for filename in self.server_FTP.listdir(delete_directory):
+                            self.server_FTP.remove(delete_directory + "/" + filename)
+                        self.server_FTP.rmdir(delete_directory)
+
+                refresh_canvas_player_list()
+
+        def player_backup_load_selected():
+            selected_player_backup = self.combobox_player_backup.get()
+            if selected_player_backup != "actuel":
+                if not(ftp_log_list): self.player_list_path = self.path + "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name, selected_player_backup)
+                elif not(self.variable_use_SFTP.get()): self.player_list_path = "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name.replace("\r", ""), selected_player_backup)
+                else: self.player_list_path = "./mclogviewer/%s/playerdata/%s/" % (self.world_name, selected_player_backup)
+            else: self.player_list_path = self.master_player_list_path
+            refresh_canvas_player_list()
+
+        self.button_player_save_data.config(command = player_backup_save)
+        self.button_player_delete_selected_data.config(command = player_backup_delete_selected)
+        self.button_player_load_selected_data.config(command=player_backup_load_selected)
 
     def update_calendar(self, year = None, month = None, mode = "day", ftp_log_list = None):
         """Met à jour l'interface du calendrier"""
@@ -823,11 +1065,12 @@ class Main:
             self.variable_use_SFTP.set(ftp_server_data["use_sftp"])
 
         def delete_ftp_server_selected():
-            selected_ftp_server_profil = combobox_ftp_server_saved.get()
-            self.variable_ftp_server_saved.pop(selected_ftp_server_profil)
-            save_ftp_server_saved()
-            if len(list(self.variable_ftp_server_saved.keys())) > 0: combobox_ftp_server_saved.current(0)
-            else: combobox_ftp_server_saved.delete(0, END)
+            if messagebox.askyesno("Attention", "Etes-vous sûr de vouloir supprimer ce profil ?"):
+                selected_ftp_server_profil = combobox_ftp_server_saved.get()
+                self.variable_ftp_server_saved.pop(selected_ftp_server_profil)
+                save_ftp_server_saved()
+                if len(list(self.variable_ftp_server_saved.keys())) > 0: combobox_ftp_server_saved.current(0)
+                else: combobox_ftp_server_saved.delete(0, END)
 
         frame_ftp_server_saved = Frame(toplevel_messagebox_ftp)
         frame_ftp_server_saved.grid(row = 1, column = 1, columnspan = 4)
@@ -949,7 +1192,6 @@ class Main:
 
         self.progressbar_messagebox_ftp = ttk.Progressbar(toplevel_messagebox_ftp)
 
-
     def player_nbt_inventory(self, player_uuid, ftp_log_list):
         toplevel_messagebox_player_inventory = Toplevel(self.root)  # Nouvelle fenêtre pour ne pas surchargé l'interface principal
         toplevel_messagebox_player_inventory.grab_set()  # On empêche d'intéragir avec la fenêtre principal
@@ -1003,15 +1245,15 @@ class Main:
 
         self.texture_assets = {}
         nbt_data = None
-        if not(ftp_log_list): nbt_data = nbt.nbt.NBTFile(self.path + "\\%s\\playerdata\\%s" % (self.world_name, player_uuid))
+        if not(ftp_log_list): nbt_data = nbt.nbt.NBTFile(self.player_list_path + player_uuid)
         else:
             for tentative in range(5):
                 try:
                     if not(self.variable_use_SFTP.get()):
                         nbt_data_file = BytesIO()
-                        self.server_FTP.retrbinary("RETR " + self.world_name[:-1] + "/playerdata/" + player_uuid, nbt_data_file.write) # [:-1 car le dernier caractère est un \n]
+                        self.server_FTP.retrbinary("RETR " + self.player_list_path + player_uuid, nbt_data_file.write) # [:-1 car le dernier caractère est un \n]
                         nbt_data_file.seek(0)
-                    else: nbt_data_file = self.server_FTP.open(self.world_name + "/playerdata/" + player_uuid, "rb")
+                    else: nbt_data_file = self.server_FTP.open(self.player_list_path + player_uuid, "rb")
 
                     nbt_data = nbt.nbt.NBTFile(fileobj = nbt_data_file)
                     break
