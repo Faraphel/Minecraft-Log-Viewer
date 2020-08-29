@@ -30,10 +30,19 @@ class Main:
         except: pass
         self.root.resizable(width=False, height=False)
 
+        self.load_options()
+        self.language = self.options["language"]
+        self.language_refresh()
+
         self.frame_game_dir = Frame(self.root)  # Menu de sélection du dossier de jeu
         self.frame_game_dir.grid(row=1, column=1)
 
-        Label(self.frame_game_dir, text="Sélectionné votre dossier de jeu").grid(row=1, column=1, columnspan=2)
+        self.frame_game_dir_header = Frame(self.frame_game_dir)
+        self.frame_game_dir_header.grid(row=1, column=1, columnspan=2)
+
+        Button(self.frame_game_dir_header, text = self.translate("Langue"), relief = RIDGE, command = self.change_language_interface).grid(row=1, column=1)
+        Label(self.frame_game_dir_header, text=self.translate("Sélectionné votre dossier de jeu")).grid(row=1, column=2)
+
         self.entry_game_dir = Entry(self.frame_game_dir, width=50)
         self.entry_game_dir.grid(row=2, column=1)
         self.entry_game_dir.insert(0, "%s\\.minecraft" % os.getenv("APPDATA"))
@@ -50,9 +59,9 @@ class Main:
 
         self.frame_button_game_dir_action = Frame(self.frame_game_dir)
         self.frame_button_game_dir_action.grid(row = 3, column = 1, columnspan = 2, sticky = "NEWS")
-        Button(self.frame_button_game_dir_action, text="Recherche", command=lambda: Thread(target = option_calendar).start(), relief=RIDGE).grid(row = 1, column = 1)
-        Button(self.frame_button_game_dir_action, text="Recherche avancée", command=self.search_log, relief=RIDGE).grid(row=1, column=2)
-        Button(self.frame_button_game_dir_action, text="Connexion via FTP...", command=self.connect_ftp, relief=RIDGE).grid(row=1, column=3)
+        Button(self.frame_button_game_dir_action, text=self.translate("Recherche"), command=lambda: Thread(target = option_calendar).start(), relief=RIDGE).grid(row = 1, column = 1)
+        Button(self.frame_button_game_dir_action, text=self.translate("Recherche avancée"), command=self.search_log, relief=RIDGE).grid(row=1, column=2)
+        Button(self.frame_button_game_dir_action, text=self.translate("Connexion via FTP..."), command=self.connect_ftp, relief=RIDGE).grid(row=1, column=3)
 
         self.progressbar_game_dir = ttk.Progressbar(self.frame_game_dir)
 
@@ -78,18 +87,18 @@ class Main:
         self.frame_calendar_month_panel.columnconfigure(2, weight = 1)
 
         self.month_id_to_name = {
-            1: "Janvier",
-            2: "Février",
-            3: "Mars",
-            4: "Avril",
-            5: "Mai",
-            6: "Juin",
-            7: "Juillet",
-            8: "Août",
-            9: "Septembre",
-            10: "Octobre",
-            11: "Novembre",
-            12: "Décembre"
+            1: self.translate("Janvier"),
+            2: self.translate("Février"),
+            3: self.translate("Mars"),
+            4: self.translate("Avril"),
+            5: self.translate("Mai"),
+            6: self.translate("Juin"),
+            7: self.translate("Juillet"),
+            8: self.translate("Août"),
+            9: self.translate("Septembre"),
+            10: self.translate("Octobre"),
+            11: self.translate("Novembre"),
+            12: self.translate("Décembre")
         }
 
         self.button_calendar_month = Button(self.frame_calendar_month_panel, text="MONTH", font=("System", 24), relief = FLAT)
@@ -110,7 +119,7 @@ class Main:
         for month in range(1, 12 + 1):
             self.dict_button_month_calendar.insert(month, Button(self.labelframe_calendar, text=month, width = 6, height=3, relief=RIDGE))
 
-        self.button_global_statistic = Button(self.frame_calendar_log, text = "Statistiques globales", relief=RIDGE)
+        self.button_global_statistic = Button(self.frame_calendar_log, text = self.translate("Statistiques globales"), relief=RIDGE)
         self.button_global_statistic.grid(row=4, column=1, columnspan=3, sticky = "NEWS")
 
         self.frame_day_log = Frame(self.root)
@@ -143,7 +152,7 @@ class Main:
 
         self.variable_log_read_search = StringVar()
         self.entry_log_read_search = Entry(self.frame_log_read, font = ("System", 12), width = 30, fg="gray70")
-        self.entry_log_read_search.insert(0, "Faire une recherche")
+        self.entry_log_read_search.insert(0, self.translate("Faire une recherche"))
         self.entry_log_read_search.grid(row = 3, column = 1, columnspan = 2, sticky = "E")
         self.entry_log_read_search.bind("<Key>", self.reset_log_read_search)
 
@@ -181,7 +190,7 @@ class Main:
 
         self.scrollbar_text_log_read.config(command=self.text_log_read_data.yview)
 
-        self.frame_screenshot_intersect = LabelFrame(self.root, text = "Capture d'écran")
+        self.frame_screenshot_intersect = LabelFrame(self.root, text = self.translate("Capture d'écran"))
 
         self.scrollbar_canvas_screenshot = Scrollbar(self.frame_screenshot_intersect)
         self.scrollbar_canvas_screenshot.grid(row = 1, column = 2, sticky = "NS")
@@ -191,7 +200,7 @@ class Main:
         self.canvas_screenshot.grid(row = 1, column = 1, sticky = "NS")
         self.scrollbar_canvas_screenshot.config(command=self.canvas_screenshot.yview)
 
-        self.frame_replay_intersect = LabelFrame(self.root, text="ReplayMod")
+        self.frame_replay_intersect = LabelFrame(self.root, text=self.translate("ReplayMod"))
 
         self.scrollbar_canvas_replay = Scrollbar(self.frame_replay_intersect)
         self.scrollbar_canvas_replay.grid(row=1, column=2, sticky="NS")
@@ -201,19 +210,19 @@ class Main:
         self.canvas_replay.grid(row=1, column=1, sticky="NS")
         self.scrollbar_canvas_replay.config(command=self.canvas_replay.yview)
 
-        self.frame_player_intersect = LabelFrame(self.root, text="Joueurs")
+        self.frame_player_intersect = LabelFrame(self.root, text=self.translate("Joueurs"))
         self.frame_player_intersect_action = Frame(self.frame_player_intersect)
         self.frame_player_intersect_action.grid(row = 1, column = 1, columnspan = 2)
 
-        Label(self.frame_player_intersect_action, text = "Backup : ").grid(row = 1, column = 1)
+        Label(self.frame_player_intersect_action, text = self.translate("Backup : ")).grid(row = 1, column = 1)
         self.combobox_player_backup = ttk.Combobox(self.frame_player_intersect_action)
         self.combobox_player_backup.grid(row = 1, column = 2)
 
-        self.button_player_save_data = Button(self.frame_player_intersect_action, text="Sauver", relief = RIDGE)
+        self.button_player_save_data = Button(self.frame_player_intersect_action, text=self.translate("Sauver"), relief = RIDGE)
         self.button_player_save_data.grid(row = 1, column = 3)
-        self.button_player_delete_selected_data = Button(self.frame_player_intersect_action, text="Supprimer", relief = RIDGE)
+        self.button_player_delete_selected_data = Button(self.frame_player_intersect_action, text=self.translate("Supprimer"), relief = RIDGE)
         self.button_player_delete_selected_data.grid(row = 1, column = 4)
-        self.button_player_load_selected_data = Button(self.frame_player_intersect_action, text="Charger", relief = RIDGE)
+        self.button_player_load_selected_data = Button(self.frame_player_intersect_action, text=self.translate("Charger"), relief = RIDGE)
         self.button_player_load_selected_data.grid(row=1, column=5)
 
         self.scrollbar_canvas_player = Scrollbar(self.frame_player_intersect)
@@ -226,7 +235,7 @@ class Main:
 
         self.frame_player_intersect_action_selected = Frame(self.frame_player_intersect)
 
-        self.button_player_restore_data = Button(self.frame_player_intersect_action_selected, text = "Restaurer", relief = RIDGE, width = 30)
+        self.button_player_restore_data = Button(self.frame_player_intersect_action_selected, text = self.translate("Restaurer"), relief = RIDGE, width = 30)
         self.button_player_restore_data.grid(row = 1, column = 1)
 
         self.player_selection_list = [] # Si vous sélectionnez des joueurs, il sera à l'intérieur.
@@ -249,7 +258,7 @@ class Main:
                 actual_version = actual_version_file.read()
             v_actual, sv_actual = clean_version_data(actual_version)
             actual_version = "%i.%i" % (v_actual, sv_actual)
-            self.root.title("Inspecteur de logs (%s)" % actual_version)
+            self.root.title(self.translate("Inspecteur de logs") + " (%s)" % actual_version)
 
             with urllib.request.urlopen(raw_github_url + "master/" + version_file_path) as github_version_file:
                 github_version = github_version_file.read().decode()
@@ -262,11 +271,35 @@ class Main:
             print(e)
 
         if new_version:
-            if messagebox.askyesno("Mise à jour disponible", "Une nouvelle version de l'application est disponible\n" + \
-                                                             "version actuel :\t%s\n" % actual_version + \
-                                                             "nouvelle version :\t%s\n" % new_version + \
-                                                             "Souhaitez-vous l'installer ?"):
+            if messagebox.askyesno( self.translate("Mise à jour disponible") ,
+                                    self.translate("Une nouvelle version de l'application est disponible") + "\n" + \
+                                    self.translate("version actuel : ") + "\t%s\n" % actual_version + \
+                                    self.translate("nouvelle version : ") + "\t%s\n" % new_version + \
+                                    self.translate("Souhaitez-vous l'installer ?")):
                 os.startfile(github_url + "releases")
+
+    def load_options(self):
+        if os.path.exists("./options.json"):
+                with open("./options.json", "rb") as option_file:
+                    self.options = json.load(option_file)
+
+        else: self.options = {"language": "français"}
+
+    def save_options(self):
+        try:
+            with open("./options.json", "w") as option_file:
+                json.dump(self.options, option_file)
+        except OSError:
+            messagebox.showerror(self.translate("Erreur"),
+                                 self.translate("Impossible de créer un fichier option. Veuillez lancer le programme en mode administrateur"))
+
+    def language_refresh(self):
+        with open("lang/%s.json" % self.language, "rb") as lang_file:
+            self.language_dictionnary = json.load(lang_file)
+
+    def translate(self, text):
+        if text in self.language_dictionnary: return self.language_dictionnary[text]
+        else: return text
 
     def reset_log_read_search(self, event = None):
         self.variable_log_read_search.set("")
@@ -331,7 +364,8 @@ class Main:
 
         if not(ftp_log_list):
             if not (os.path.exists(self.path + "\\logs\\")):
-                messagebox.showerror("Erreur", "Ce dossier de jeu ne contient pas de dossier /logs/")
+                messagebox.showerror(self.translate("Erreur"),
+                                     self.translate("Ce dossier de jeu ne contient pas de dossier /logs/"))
                 return -1
             list_log = glob.glob(self.path + "\\logs\\" + "*.log.gz")
 
@@ -399,11 +433,16 @@ class Main:
             if self.player_list_path == self.master_player_list_path: is_master = True
             else: is_master = False
 
+            usercache = {}
+
             if not(ftp_log_list):
                 if os.path.exists(self.player_list_path):
                     self.player_list = os.listdir(self.player_list_path)
                 if os.path.exists(self.path + "\\mclogviewer\\%s\\playerdata\\" % self.world_name):
                     self.player_backup_list = os.listdir(self.path + "\\mclogviewer\\%s\\playerdata\\" % self.world_name)
+                if os.path.exists(self.path + "\\usercache.json"):
+                    with open(self.path + "\\usercache.json") as usercachefile:
+                        usercache = json.load(usercachefile)
 
             else:
                 for tentative in range(5):
@@ -429,6 +468,39 @@ class Main:
                         self.player_backup_list = [os.path.basename(x) for x in self.player_backup_list]
                         break
                     except Exception as e: print("Tentative %i (playerdata backup) (%s)" % (tentative, str(e)))
+
+                for tentative in range(5):
+                    try:
+                        if not(self.variable_use_SFTP.get()):
+                            self.player_backup_list = self.server_FTP.nlst("/mclogviewer/" + self.world_name.replace("\r", "") + "/playerdata/")
+                        else:
+                            try: self.player_backup_list = self.server_FTP.listdir("./mclogviewer/" + self.world_name + "/playerdata/")
+                            except: self.player_backup_list = []
+
+                        self.player_backup_list = [os.path.basename(x) for x in self.player_backup_list]
+                        break
+                    except Exception as e: print("Tentative %i (playerdata backup) (%s)" % (tentative, str(e)))
+
+                for tentative in range(5):
+                    try:
+                        if not(self.variable_use_SFTP.get()):
+                            if "usercache.json" in self.server_FTP.nlst("/"):
+                                usercachefile = BytesIO()
+                                self.server_FTP.retrbinary("RETR usercache.json", usercachefile.write)
+                                usercachefile.seek(0)
+                                usercache = json.load(usercachefile)
+                        else:
+                            if self.server_FTP.exists("usercache.json"):
+                                with self.server_FTP.open("usercache.json") as usercachefile:
+                                    usercache = json.load(usercachefile)
+
+                        self.player_backup_list = [os.path.basename(x) for x in self.player_backup_list]
+                        break
+                    except Exception as e: print("Tentative %i (playerdata backup) (%s)" % (tentative, str(e)))
+
+            for userdata in usercache:
+                try: self.player_name_cache.update({userdata["uuid"]: userdata["name"]})
+                except: print("Erreur player_name_cache : %s" % str(userdata))
 
             self.canvas_player.delete(ALL)
             index = 0
@@ -475,13 +547,14 @@ class Main:
 
             if is_master: # Si la liste de joueur chargé est celui du jeu, alors :
                 self.frame_player_intersect_action_selected.grid_forget()
-                self.frame_player_intersect.config(text = "Joueurs (actuel)")
+                self.frame_player_intersect.config(text = self.translate("Joueurs (actuel)"))
             else:
                 self.frame_player_intersect_action_selected.grid(row=3, column=1, columnspan=2)
 
                 def restore_player():
-                    if messagebox.askyesno("Confirmation", "Etes-vous sûr de vouloir restaurer ces données ?\n" +\
-                                           "(Les données actuelles seront écrasées !)"):
+                    if messagebox.askyesno(self.translate("Confirmation"),
+                                           self.translate("Etes-vous sûr de vouloir restaurer ces données ?") + "\n" +\
+                                           self.translate("(Les données actuelles seront écrasées !)")):
                         for player in self.player_selection_list:
                             if not(ftp_log_list):
                                 with open(self.path + "\\%s\\playerdata\\%s" % (self.world_name, player), "wb") as dest_file:
@@ -503,11 +576,11 @@ class Main:
                         refresh_canvas_player_list()
 
                 self.button_player_restore_data.config(command = restore_player)
-                self.frame_player_intersect.config(text="Joueurs (%s)" % os.path.basename(os.path.dirname(self.player_list_path)))
+                self.frame_player_intersect.config(text=self.translate("Joueurs") + " (%s)" % os.path.basename(os.path.dirname(self.player_list_path)))
 
             self.canvas_player.config(scrollregion=self.canvas_player.bbox(ALL))
 
-            self.player_backup_list.insert(0, "actuel")
+            self.player_backup_list.insert(0, self.translate("actuel"))
             self.combobox_player_backup.config(values=self.player_backup_list)
             self.combobox_player_backup.current(0)
 
@@ -556,7 +629,8 @@ class Main:
                                 dest_file.write(source_file.read())
 
                 except PermissionError:
-                    messagebox.showerror("Erreur", "Ce compte n'a pas les permissions nécéssaires.")
+                    messagebox.showerror(self.translate("Erreur"),
+                                         self.translate("Ce compte n'a pas les permissions nécéssaires."))
 
             refresh_canvas_player_list()
 
@@ -564,7 +638,8 @@ class Main:
             selected_player_backup = self.combobox_player_backup.get()
             if selected_player_backup in self.player_backup_list and selected_player_backup != "actuel":
 
-                if messagebox.askyesno("Confirmer", "Etes vous sur de vouloir supprimer la sauvegarde %s ?" % selected_player_backup):
+                if messagebox.askyesno(self.translate("Confirmer"),
+                                       self.translate("Etes vous sur de vouloir supprimer la sauvegarde %s ?") % selected_player_backup):
                     if not(ftp_log_list):
                         delete_directory = self.path + "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name, selected_player_backup)
 
@@ -589,7 +664,7 @@ class Main:
 
         def player_backup_load_selected():
             selected_player_backup = self.combobox_player_backup.get()
-            if selected_player_backup != "actuel":
+            if selected_player_backup != self.translate("actuel"):
                 if not(ftp_log_list): self.player_list_path = self.path + "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name, selected_player_backup)
                 elif not(self.variable_use_SFTP.get()): self.player_list_path = "\\mclogviewer\\%s\\playerdata\\%s\\" % (self.world_name.replace("\r", ""), selected_player_backup)
                 else: self.player_list_path = "./mclogviewer/%s/playerdata/%s/" % (self.world_name, selected_player_backup)
@@ -683,7 +758,7 @@ class Main:
             self.canvas_day_log_historic.create_line(0, step_time_offset * step, canvas_width, step_time_offset * step, fill = "gray65")
 
         self.frame_day_log.grid(row = 1, column = 2, rowspan = 2)
-        self.label_day_total_log.config(text = "fichier logs trouvé : %i" % self.log_metadata[year][month][day])
+        self.label_day_total_log.config(text = self.translate("fichier logs trouvé : ") + "%i" % self.log_metadata[year][month][day])
 
         if not(ftp_log_list): list_log = glob.iglob(self.path + "\\logs\\" + "%04i-%02i-%02i-*.log.gz" % (year, month, day))
         else:
@@ -784,8 +859,8 @@ class Main:
 
                         else: self.text_log_read_data.insert(END, "%s %s\n" % (line[:10], line_text), "chat_message")
 
-                elif "Connecting to " in line: self.text_log_read_data.insert(END, "%s Connexion à %s\n" %
-                                                                              (line[:10], "".join(line.split("Connecting to ")[1:])),
+                elif "Connecting to " in line: self.text_log_read_data.insert(END, "%s " % line[:10] + self.translate("Connexion à") + " %s\n" %
+                                                                              ("".join(line.split("Connecting to ")[1:])),
                                                                               "server_connection")
 
         elif format == "server":
@@ -814,8 +889,8 @@ class Main:
         last_hour,last_min,last_sec = self.timestamp_to_hms(last_timestamp)
         # Permet d'afficher un mode simplifier pemettant de voir les connexions / déconnexion
         self.frame_log_read.grid(row = 3, column = 1, columnspan = 2)
-        self.label_log_read_metadata.config(text = "Nom du fichier : %s\nDate : %02i/%02i/%04i %02i:%02i:%02i" %
-                                            (file,day,month,year,first_hour,first_min,first_sec))
+        self.label_log_read_metadata.config(text = self.translate("Nom du fichier : ") + "%s\n" % file +
+                                                   self.translate("Date : ") + "%02i/%02i/%04i %02i:%02i:%02i" % (day,month,year,first_hour,first_min,first_sec))
 
         if not(ftp_log_list):
             with gzip.open(file) as log_file: log_data = log_file.read().decode("cp1252")
@@ -902,9 +977,9 @@ class Main:
                     replay_duration_hour, replay_duration_min, replay_duration_sec = self.timestamp_to_hms(replay_metadata["duration"] // 1000)
                     self.canvas_replay.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=filename, font=("System", 18))
                     self.canvas_replay.create_text(canvas_width / 2, 100 * (index + 1),
-                                                   text="IP du serveur : %s\n" % (replay_metadata["serverName"]) + \
-                                                        "Version du jeu : %s\n" % (replay_metadata["mcversion"]) + \
-                                                        "Durée : %02i:%02i:%02i\n" % (
+                                                   text=self.translate("IP du serveur : ") + "%s\n" % (replay_metadata["serverName"]) + \
+                                                        self.translate("Version du jeu : ") + "%s\n" % (replay_metadata["mcversion"]) + \
+                                                        self.translate("Durée : ") + "%02i:%02i:%02i\n" % (
                                                         replay_duration_hour, replay_duration_min, replay_duration_sec),
                                                    font=("System", 16))
 
@@ -926,8 +1001,9 @@ class Main:
 
         self.screenshot_imagetk = {} # Permet de garder "vivant" les screenshots (sinon, elles disparaissent instantanément)
         if first_timestamp==0 and last_timestamp==0:
-            messagebox.showwarning("Attention", "Le programme n'à pas réussi à déterminer l'heure de ce log, il se peut "+\
-                                                "que certaines fonctionnalitées soient alors indisponible.")
+            messagebox.showwarning(self.translate("Attention"),
+                                   self.translate("Le programme n'à pas réussi à déterminer l'heure de ce log, il se peut ")+ \
+                                   self.translate("que certaines fonctionnalitées soient alors indisponible."))
 
         self.find_screenshot(year,month,day,first_timestamp,last_timestamp,update_canvas=True)
         self.find_replay(year,month,day,first_timestamp,last_timestamp,update_canvas=True)
@@ -961,17 +1037,17 @@ class Main:
             else: return False
 
         search_option = {
-            "Tout les logs": lambda file: True,
-            "Rechercher les connexions à un serveur": search_by_server,
-            "Rechercher un pseudo, un mot, un terme, une phrase": search_by_term,
+            self.translate("Tout les logs"): lambda file: True,
+            self.translate("Rechercher les connexions à un serveur"): search_by_server,
+            self.translate("Rechercher un pseudo, un mot, un terme, une phrase"): search_by_term,
         } # Différent moyen de trie associer à leur fonction
 
-        Label(toplevel_messagebox_search, text = "Je souhaite...").grid(row = 1, column = 1)
+        Label(toplevel_messagebox_search, text = self.translate("Je souhaite...")).grid(row = 1, column = 1)
         combobox_search_mode = ttk.Combobox(toplevel_messagebox_search, values = list(search_option.keys()),
                                             width = 50, font = ("Purisa", 20)) # Combobox dans lequel ont choisi sont type de tri
         combobox_search_mode.insert(0, list(search_option.keys())[0])
         combobox_search_mode.grid(row = 2, column = 1)
-        Label(toplevel_messagebox_search, text = "...qui est...").grid(row = 3, column = 1)
+        Label(toplevel_messagebox_search, text = self.translate("...qui est...")).grid(row = 3, column = 1)
         search_entry = Entry(toplevel_messagebox_search, font = ("System", 18)) # Entry dans lequel on tape notre requête
         search_entry.grid(row = 4, column = 1, sticky = "NEWS")
 
@@ -987,11 +1063,13 @@ class Main:
             search_entry_data = search_entry.get()
 
             if search_mode == "":
-                messagebox.showerror("Erreur", "Veuillez sélectionner un type de filtre")
+                messagebox.showerror(self.translate("Erreur"),
+                                     self.translate("Veuillez sélectionner un type de filtre"))
                 return -1
 
             elif search_entry_data == "" and not(search_mode == list(search_option.keys())[0]):
-                messagebox.showerror("Erreur", "Veuillez entrer un filtre")
+                messagebox.showerror(self.translate("Erreur"),
+                                     self.translate("Veuillez entrer un filtre"))
                 return -1
 
             self.reset_log_read_search()
@@ -1005,7 +1083,8 @@ class Main:
                 return -1
 
             if self.update_calendar() == -1:
-                messagebox.showerror("Erreur", "Aucune correspondance trouvé")
+                messagebox.showerror(self.translate("Erreur"),
+                                     self.translate("Aucune correspondance trouvé"))
                 return -1
 
             back()
@@ -1022,11 +1101,11 @@ class Main:
         label_action_bar = LabelFrame(toplevel_messagebox_search) # Barre dans laquelle sont les boutons
         label_action_bar.grid(row = 5, column = 1, sticky = "NEWS")
         label_action_bar.columnconfigure(2, weight = 1) # Permet de créer l'espace entre les deux boutons et de les coller aux bords
-        Button(label_action_bar, text="Retour", relief=RIDGE, command = back).grid(row=1, column=1)
-        Button(label_action_bar, text="Rechercher", relief = RIDGE, command = lambda: Thread(target=pre_search).start()).grid(row=1, column=3)
+        Button(label_action_bar, text=self.translate("Retour"), relief=RIDGE, command = back).grid(row=1, column=1)
+        Button(label_action_bar, text=self.translate("Rechercher"), relief = RIDGE, command = lambda: Thread(target=pre_search).start()).grid(row=1, column=3)
 
-        Checkbutton(label_action_bar, text="Uniquement si il contient des screenshots", variable = self.variable_search_screenshot_only).grid(row=2, column=1, columnspan=3)
-        Checkbutton(label_action_bar, text="Uniquement si il contient des replays", variable = self.variable_search_replay_only).grid(row=3, column=1, columnspan=3)
+        Checkbutton(label_action_bar, text=self.translate("Uniquement si il contient des screenshots"), variable = self.variable_search_screenshot_only).grid(row=2, column=1, columnspan=3)
+        Checkbutton(label_action_bar, text=self.translate("Uniquement si il contient des replays"), variable = self.variable_search_replay_only).grid(row=3, column=1, columnspan=3)
 
         progressbar_action_bar = ttk.Progressbar(toplevel_messagebox_search)
 
@@ -1065,7 +1144,8 @@ class Main:
             self.variable_use_SFTP.set(ftp_server_data["use_sftp"])
 
         def delete_ftp_server_selected():
-            if messagebox.askyesno("Attention", "Etes-vous sûr de vouloir supprimer ce profil ?"):
+            if messagebox.askyesno(self.translate("Attention"),
+                                   self.translate("Etes-vous sûr de vouloir supprimer ce profil ?")):
                 selected_ftp_server_profil = combobox_ftp_server_saved.get()
                 self.variable_ftp_server_saved.pop(selected_ftp_server_profil)
                 save_ftp_server_saved()
@@ -1075,35 +1155,35 @@ class Main:
         frame_ftp_server_saved = Frame(toplevel_messagebox_ftp)
         frame_ftp_server_saved.grid(row = 1, column = 1, columnspan = 4)
 
-        Label(frame_ftp_server_saved, text = "Serveur enregistré : ", font = ("System", 18)).grid(row = 1, column = 1)
+        Label(frame_ftp_server_saved, text = self.translate("Serveur enregistré : "), font = ("System", 18)).grid(row = 1, column = 1)
         combobox_ftp_server_saved = ttk.Combobox(frame_ftp_server_saved, values = list(self.variable_ftp_server_saved.keys()), font = ("System", 18))
         combobox_ftp_server_saved.grid(row = 1, column = 2)
         if len(list(self.variable_ftp_server_saved.keys())) > 0: combobox_ftp_server_saved.current(0)
 
-        Button(frame_ftp_server_saved, text="Charger", font = ("System", 16), relief = RIDGE, command = load_ftp_server_selected).grid(row=1, column=3, sticky = "NEWS")
+        Button(frame_ftp_server_saved, text=self.translate("Charger"), font = ("System", 16), relief = RIDGE, command = load_ftp_server_selected).grid(row=1, column=3, sticky = "NEWS")
 
-        Button(frame_ftp_server_saved, text="Sauver", font = ("System", 16), relief = RIDGE, command = lambda: save_ftp_server_saved(
+        Button(frame_ftp_server_saved, text=self.translate("Sauver"), font = ("System", 16), relief = RIDGE, command = lambda: save_ftp_server_saved(
             {"ip": entry_ftp_host_ip.get(),
              "port": entry_ftp_host_port.get(),
              "user": entry_ftp_user.get(),
              "use_sftp": self.variable_use_SFTP.get()})
                ).grid(row=1, column=4, sticky = "NEWS")
 
-        Button(frame_ftp_server_saved, text="Supprimer", font = ("System", 16), relief = RIDGE, command = delete_ftp_server_selected).grid(row=1, column=5, sticky = "NEWS")
+        Button(frame_ftp_server_saved, text=self.translate("Supprimer"), font = ("System", 16), relief = RIDGE, command = delete_ftp_server_selected).grid(row=1, column=5, sticky = "NEWS")
 
-        Label(toplevel_messagebox_ftp, text = "IP du serveur : ").grid(row = 2, column = 1)
+        Label(toplevel_messagebox_ftp, text = self.translate("IP du serveur : ")).grid(row = 2, column = 1)
         entry_ftp_host_ip = Entry(toplevel_messagebox_ftp, font = ("System", 18))
         entry_ftp_host_ip.insert(END, "127.0.0.1")
         entry_ftp_host_ip.grid(row = 2, column = 2)
-        Label(toplevel_messagebox_ftp, text="Port : ").grid(row=2, column=3)
+        Label(toplevel_messagebox_ftp, text=self.translate("Port : ")).grid(row=2, column=3)
         entry_ftp_host_port = Entry(toplevel_messagebox_ftp, font = ("System", 18))
         entry_ftp_host_port.insert(END, "22")
         entry_ftp_host_port.grid(row = 2, column = 4)
 
-        Label(toplevel_messagebox_ftp, text="Utilisateur : ").grid(row=3, column=1)
+        Label(toplevel_messagebox_ftp, text=self.translate("Utilisateur : ")).grid(row=3, column=1)
         entry_ftp_user = Entry(toplevel_messagebox_ftp, font=("System", 18))
         entry_ftp_user.grid(row=3, column=2)
-        Label(toplevel_messagebox_ftp, text="Mot de passe : ").grid(row=3, column=3)
+        Label(toplevel_messagebox_ftp, text=self.translate("Mot de passe : ")).grid(row=3, column=3)
         entry_ftp_password = Entry(toplevel_messagebox_ftp, font=("System", 18), show = "*")
         entry_ftp_password.grid(row=3, column=4)
 
@@ -1121,16 +1201,19 @@ class Main:
 
                 try: self.server_FTP.connect(host_ip, int(host_port), timeout = 15)
                 except:
-                    messagebox.showerror("Erreur", "L'hôte n'a pas été trouvé")
+                    messagebox.showerror(self.translate("Erreur"),
+                                         self.translate("L'hôte n'a pas été trouvé"))
                     return -1
                 try: self.server_FTP.login(user, password)
                 except:
-                    messagebox.showerror("Erreur", "Les identifiants ne sont pas correct")
+                    messagebox.showerror(self.translate("Erreur"),
+                                         self.translate("Les identifiants ne sont pas correct"))
                     return -1
 
                 try: ftp_log_list = self.server_FTP.nlst("logs/")
                 except:
-                    messagebox.showerror("Erreur", "Ce serveur ne contient pas de dossier /logs/")
+                    messagebox.showerror(self.translate("Erreur"),
+                                         self.translate("Ce serveur ne contient pas de dossier /logs/"))
                     return -1
             else:
                 try:
@@ -1140,19 +1223,22 @@ class Main:
                     cnopts = pysftp.CnOpts("known_hosts")
                     cnopts.hostkeys.add(host_ip, hash_type, key)
                 except Exception as e:
-                    messagebox.showerror("Erreur", "Une erreur est survenue pendant la récupération de la clé RSA\n"+\
-                                         "\nPlus d'information sur l'erreur : \n\n%s" % str(e))
+                    messagebox.showerror(self.translate("Erreur"),
+                                         self.translate("Une erreur est survenue pendant la récupération de la clé RSA") + "\n"+\
+                                         "\n" + self.translate("Plus d'information sur l'erreur : ") + "\n\n%s" % str(e))
                     return -1
 
                 try: self.server_FTP = pysftp.Connection(host_ip, username=user, password=password, cnopts=cnopts, port = int(host_port))
                 except Exception as e:
-                    messagebox.showerror("Erreur", "Une erreur est survenue pendant la connexion au serveur, \n" +\
-                                         "vérifier vos identifiants.\n\n Plus d'information sur l'erreur :\n\n%s" % str(e))
+                    messagebox.showerror(self.translate("Erreur"),
+                                         self.translate("Une erreur est survenue pendant la connexion au serveur, ") + "\n" +\
+                                         self.translate("vérifier vos identifiants.") + "\n\n" + self.translate("Plus d'information sur l'erreur : ") + "\n\n%s" % str(e))
                     return -1
 
                 try: ftp_log_list = self.server_FTP.listdir("logs/")
                 except:
-                    messagebox.showerror("Erreur", "Ce serveur ne contient pas de dossier /logs/")
+                    messagebox.showerror(self.translate("Erreur"),
+                                         self.translate("Ce serveur ne contient pas de dossier /logs/"))
                     return -1
 
             try:
@@ -1163,13 +1249,15 @@ class Main:
                         continue
                     else: break
             except ftplib.error_temp:
-                messagebox.showerror("Erreur", "Impossible de faire une requête au serveur FTP\n"+\
-                                     "Vérifier que aucun autre processus n'est connecté au même\n"+\
-                                     "Serveur FTP, puis réessayer.")
+                messagebox.showerror(self.translate("Erreur"),
+                                     self.translate("Impossible de faire une requête au serveur FTP") + "\n"+\
+                                     self.translate("Vérifier que aucun autre processus n'est connecté au même") + "\n"+\
+                                     self.translate("Serveur FTP, puis réessayer."))
                 return -1
             except: return -1
             if self.update_calendar(ftp_log_list = ftp_log_list) == -1:
-                messagebox.showerror("Erreur", "Aucune correspondance trouvé")
+                messagebox.showerror(self.translate("Erreur"),
+                                     self.translate("Aucune correspondance trouvé"))
                 return -1
 
             back()
@@ -1186,9 +1274,9 @@ class Main:
         frame_messagebox_ftp_action_bar = Frame(toplevel_messagebox_ftp)
         frame_messagebox_ftp_action_bar.grid(row = 4, column = 1, columnspan = 4, sticky = "NEWS")
         frame_messagebox_ftp_action_bar.columnconfigure(2, weight = 1)
-        Button(frame_messagebox_ftp_action_bar, text = "Retour", relief = RIDGE, command = back).grid(row = 1, column = 1, sticky = "NEWS")
-        Button(frame_messagebox_ftp_action_bar, text = "Connexion", relief = RIDGE, command = lambda: Thread(target=pre_connexion).start()).grid(row = 1, column = 3, sticky = "NEWS")
-        Checkbutton(frame_messagebox_ftp_action_bar, text = "Utiliser le protocole SFTP", variable = self.variable_use_SFTP).grid(row = 1, column = 2)
+        Button(frame_messagebox_ftp_action_bar, text = self.translate("Retour"), relief = RIDGE, command = back).grid(row = 1, column = 1, sticky = "NEWS")
+        Button(frame_messagebox_ftp_action_bar, text = self.translate("Connexion"), relief = RIDGE, command = lambda: Thread(target=pre_connexion).start()).grid(row = 1, column = 3, sticky = "NEWS")
+        Checkbutton(frame_messagebox_ftp_action_bar, text = self.translate("Utiliser le protocole SFTP"), variable = self.variable_use_SFTP).grid(row = 1, column = 2)
 
         self.progressbar_messagebox_ftp = ttk.Progressbar(toplevel_messagebox_ftp)
 
@@ -1214,17 +1302,17 @@ class Main:
 
         width_container_9x3, height_container_9x3 = container_9x3_image.width, container_9x3_image.height
 
-        Label(toplevel_messagebox_player_inventory, text = "Inventaire", font = ("System", 20)).grid(row = 1, column = 1)
+        Label(toplevel_messagebox_player_inventory, text = self.translate("Inventaire"), font = ("System", 20)).grid(row = 1, column = 1)
         canvas_player_inventory = Canvas(toplevel_messagebox_player_inventory, width = width_inventory, height = height_inventory)
         canvas_player_inventory.create_image(width_inventory // 2, height_inventory // 2, image = self.player_inventory_image_tk)
         canvas_player_inventory.grid(row = 2, column = 1, rowspan = 3)
 
-        Label(toplevel_messagebox_player_inventory, text="Ender Chest", font=("System", 20)).grid(row=1, column=2)
+        Label(toplevel_messagebox_player_inventory, text = self.translate("Ender Chest"), font=("System", 20)).grid(row=1, column=2)
         canvas_player_enderchest = Canvas(toplevel_messagebox_player_inventory, width=width_container_9x3, height=height_container_9x3)
         canvas_player_enderchest.create_image(width_container_9x3 // 2, height_container_9x3 // 2, image=self.container_9x3_image_tk)
         canvas_player_enderchest.grid(row=2, column=2)
 
-        Label(toplevel_messagebox_player_inventory, text="Shulker", font=("System", 20)).grid(row=3, column=2)
+        Label(toplevel_messagebox_player_inventory, text = self.translate("Shulker"), font=("System", 20)).grid(row=3, column=2)
         canvas_player_shulker = Canvas(toplevel_messagebox_player_inventory, width=width_container_9x3, height=height_container_9x3)
         canvas_player_shulker.create_image(width_container_9x3 // 2, height_container_9x3 // 2, image=self.container_9x3_image_tk)
         canvas_player_shulker.grid(row=4, column=2)
@@ -1240,7 +1328,7 @@ class Main:
         self.slot_id_to_canvas_container_9x3 = {}
         for index in range(27): self.slot_id_to_canvas_container_9x3[index] = ((index % 9) * 51 + 22, (index // 9) * 51 + 51)  # Constante obtenu pour une image de 500x500
 
-        label_item_information = Label(toplevel_messagebox_player_inventory, text = "Cliquer sur un objet pour voir ses statistiques", font = ("System", 12))
+        label_item_information = Label(toplevel_messagebox_player_inventory, text = self.translate("Cliquer sur un objet pour voir ses statistiques"), font = ("System", 12))
         label_item_information.grid(row = 5, column = 1)
 
         self.texture_assets = {}
@@ -1292,25 +1380,25 @@ class Main:
             if "tag" in item:
                 Tags = "\n"
                 if "Damage" in item["tag"]:
-                    try: Tags += "Damage : %s\n" % str(item["tag"]["Damage"].value)
-                    except: Tags += "Damage : ?"
+                    try: Tags += self.translate("Damage : ") + "%s\n" % str(item["tag"]["Damage"].value)
+                    except: Tags += self.translate("Damage : ") + "?"
                 if "Enchantments" in item["tag"]:
-                    Tags += "Enchanté avec : \n"
+                    Tags += self.translate("Enchanté avec : ") + "\n"
                     try:
-                        for enchant in item["tag"]["Enchantments"]: Tags += "- %s (niveau %i)\n" % (enchant["id"].value, enchant["lvl"].value)
+                        for enchant in item["tag"]["Enchantments"]: Tags += "- %s (" + self.translate("niveau") + " %i)\n" % (enchant["id"].value, enchant["lvl"].value)
                     except: Tags += "- ?\n"
                 if "display" in item["tag"]:
                     if "Name" in item["tag"]["display"]:
-                        try: Tags += "Renommée en : %s\n" % item["tag"]["display"]["Name"].value
-                        except: "Renommée en : ?\n"
+                        try: Tags += self.translate("Renommée en : ") + "%s\n" % item["tag"]["display"]["Name"].value
+                        except: self.translate("Renommée en : ") + "?\n"
                     if "Lore" in item["tag"]["display"]:
-                        try: Tags += "Lore : %s\n" % item["tag"]["display"]["Lore"].value
-                        except: "Lore : ?\n"
+                        try: Tags += self.translate("Lore : ") + "%s\n" % item["tag"]["display"]["Lore"].value
+                        except: self.translate("Lore : ") + "?\n"
                 if "SkullOwner" in item["tag"]:
-                    try: Tags += "Tête de : %s\n" % item["tag"]["SkullOwner"].value
-                    except: Tags += "Tête de : ?\n"
+                    try: Tags += self.translate("Tête de : ") + "%s\n" % item["tag"]["SkullOwner"].value
+                    except: Tags += self.translate("Tête de : ") + "?\n"
                 if "BlockEntityTag" in item["tag"]:
-                    Tags += "Contient :\n"
+                    Tags += self.translate("Contient : ") + "\n"
                     try:
                         canvas_player_shulker.delete(ALL)
                         canvas_player_shulker.create_image(width_container_9x3 // 2, height_container_9x3 // 2, image=self.container_9x3_image_tk)
@@ -1335,9 +1423,10 @@ class Main:
                     except: Tags += "?\n"
             else: Tags = "Aucun"
 
-            label_item_information.config(text = "Nom de l'objet : %s\n" % item["id"].value +\
-                                          "Quantité : %i\n" % item["Count"].value +\
-                                          "Tags : %s\n" % Tags)
+            label_item_information.config(text =
+                                          self.translate("Nom de l'objet : ") + "%s\n" % item["id"].value +\
+                                          self.translate("Quantité : ") + "%i\n" % item["Count"].value +\
+                                          self.translate("Tags : ") + "%s\n" % Tags)
 
         for index, item in enumerate(nbt_data["Inventory"].tags):
             try:
@@ -1360,9 +1449,9 @@ class Main:
                 print("Enderchest : " + str(e))
 
         player_metadata_text = ""
-        if "Pos" in nbt_data: player_metadata_text += "Coordonées : x = %i | y = %i | z = %i\n" % (nbt_data["Pos"][0].value, nbt_data["Pos"][1].value, nbt_data["Pos"][2].value)
-        if "Health" in nbt_data: player_metadata_text += "Vie : %i / 20\n" % nbt_data["Health"].value
-        if "SpawnX" in nbt_data: player_metadata_text += "Spawnpoint : x = %i | y = %i | z = %i\n" % (nbt_data["SpawnX"].value, nbt_data["SpawnY"].value, nbt_data["SpawnZ"].value)
+        if "Pos" in nbt_data: player_metadata_text += self.translate("Coordonées : ") + "x = %i | y = %i | z = %i\n" % (nbt_data["Pos"][0].value, nbt_data["Pos"][1].value, nbt_data["Pos"][2].value)
+        if "Health" in nbt_data: player_metadata_text += self.translate("Vie : ") + "%i / 20\n" % nbt_data["Health"].value
+        if "SpawnX" in nbt_data: player_metadata_text += self.translate("Spawnpoint : ") + "x = %i | y = %i | z = %i\n" % (nbt_data["SpawnX"].value, nbt_data["SpawnY"].value, nbt_data["SpawnZ"].value)
 
         Label(toplevel_messagebox_player_inventory, text = player_metadata_text, font =("System", 8)).grid(row = 5, column = 2)
 
@@ -1413,7 +1502,42 @@ class Main:
                                                            width * year_index / max_year, 0,
                                                            fill = "gray70", dash=(100, 1), width = 2)
 
-            Label(toplevel_messagebox_global_statistic, text = "Nombre total de log : %i" % self.total_log).grid(row = 2, column = 1)
+            Label(toplevel_messagebox_global_statistic, text = self.translate("Nombre total de log : ") + "%i" % self.total_log).grid(row = 2, column = 1)
+
+    def change_language_interface(self):
+        toplevel_language_selector = Toplevel(self.root)  # Nouvelle fenêtre pour ne pas surchargé l'interface principal
+        toplevel_language_selector.grab_set()  # On empêche d'intéragir avec la fenêtre principal
+        toplevel_language_selector.resizable(width=False, height=False)
+        toplevel_language_selector.title(self.translate("Changer de language"))
+        try: self.root.iconbitmap("icon.ico")
+        except: pass
+
+        self.available_language = [lang.split(".")[0] for lang in os.listdir("./lang/")]
+
+        self.combobox_language_selector = ttk.Combobox(toplevel_language_selector, values=self.available_language, font = ("System", 18))
+        self.combobox_language_selector.grid(row=1, column=1, columnspan=2)
+        self.combobox_language_selector.insert(0, self.language)
+
+        def cancel():
+            toplevel_language_selector.grab_release()
+            toplevel_language_selector.destroy()
+
+        Button(toplevel_language_selector, text=self.translate("Retour"), font=("System", 18), relief = RIDGE, command = cancel).grid(row=2,column=1, sticky="NEWS")
+
+        def change_language():
+            selected_language = self.combobox_language_selector.get()
+            if os.path.exists("./lang/%s.json" % selected_language):
+
+                messagebox.showinfo(self.translate("Attention"),
+                                    self.translate("L'application va redémarrer."))
+
+                self.options["language"] = selected_language
+                self.save_options()
+
+                os.startfile(sys.argv[0])
+                sys.exit()
+
+        Button(toplevel_language_selector, text=self.translate("Changer"), font=("System", 18), relief = RIDGE, command = change_language).grid(row=2, column=2, sticky="NEWS")
 
 main = Main()
 mainloop()
