@@ -101,5 +101,7 @@
   "Impossible de créer un fichier option. Veuillez lancer le programme en mode administrateur": "Impossible de créer un fichier option. Veuillez lancer le programme en mode administrateur",
   "Tout les logs": "Tout les logs",
   "Rechercher les connexions à un serveur": "Rechercher les connexions à un serveur",
-  "Rechercher un pseudo, un mot, un terme, une phrase": "Rechercher un pseudo, un mot, un terme, une phrase"
+  "Rechercher un pseudo, un mot, un terme, une phrase": "Rechercher un pseudo, un mot, un terme, une phrase",
+  "Ancien": "Ancien",
+  "Exporter les fichiers recoupées dans un dossier": "Exporter les fichiers recoupées dans un dossier"
 }

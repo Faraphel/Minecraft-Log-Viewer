@@ -13,6 +13,7 @@ import calendar
 import zipfile
 import ftplib
 import pysftp
+import anvil
 import gzip
 import glob
 import json
@@ -33,6 +34,9 @@ class Main:
         self.load_options()
         self.language = self.options["language"]
         self.language_refresh()
+
+        self.texture_assets = {}
+        self.texture_assets_tk = {}
 
         self.frame_game_dir = Frame(self.root)  # Menu de sélection du dossier de jeu
         self.frame_game_dir.grid(row=1, column=1)
@@ -69,6 +73,7 @@ class Main:
 
         self.variable_search_screenshot_only = BooleanVar(value = False)
         self.variable_search_replay_only = BooleanVar(value = False)
+        self.variable_export_crosschecked_file = BooleanVar(value = False)
 
         self.frame_calendar_log = Frame(self.root)
 
@@ -209,6 +214,9 @@ class Main:
                                         yscrollcommand=self.scrollbar_canvas_replay.set)
         self.canvas_replay.grid(row=1, column=1, sticky="NS")
         self.scrollbar_canvas_replay.config(command=self.canvas_replay.yview)
+
+        self.item_not_found_image = Image.open("assets\\not_found_icon.png").resize((46, 46))
+        self.item_not_found_image_tk = ImageTk.PhotoImage(self.item_not_found_image)
 
         self.frame_player_intersect = LabelFrame(self.root, text=self.translate("Joueurs"))
         self.frame_player_intersect_action = Frame(self.frame_player_intersect)
@@ -515,7 +523,7 @@ class Main:
                 except: text, font = player_uuid, ("System", 16)
 
                 if player_uuid.split(".")[-1] == "dat_old":
-                    text += " (Ancien)"
+                    text += " (%s)" % self.translate("Ancien")
 
                 self.canvas_player.create_rectangle(0, 100 * (index), canvas_width, 100 * (index + 1), fill = "gray80", tags = "player-%i" % index)
                 self.canvas_player.create_text(canvas_width / 2, 100 * (index + 1) - 50, text=text, font=font, tags = "player-%i" % index)
@@ -943,6 +951,14 @@ class Main:
                         canvas_image_ID = self.canvas_screenshot.create_image(canvas_width/2, (screenshot_image.height/2+5)*(index*2+1)+5,
                                                                               image=self.screenshot_imagetk[file])
                     self.canvas_screenshot.tag_bind(canvas_image_ID, "<Button-1>", lambda event, file=file: os.startfile(file))
+
+                else:
+                    if self.variable_export_crosschecked_file.get():
+                        if os.path.exists(self.entry_export_crosschecked_file_path.get()):
+                            with open(file, "rb") as source_file:
+                                with open("%s\\%s" % (self.entry_export_crosschecked_file_path.get(), filename), "wb") as dest_file:
+                                    dest_file.write(source_file.read())
+
                 index += 1
 
         self.canvas_screenshot.config(scrollregion=self.canvas_screenshot.bbox(ALL))
@@ -982,6 +998,13 @@ class Main:
                                                         self.translate("Durée : ") + "%02i:%02i:%02i\n" % (
                                                         replay_duration_hour, replay_duration_min, replay_duration_sec),
                                                    font=("System", 16))
+
+                else:
+                    if self.variable_export_crosschecked_file.get():
+                        if os.path.exists(self.entry_export_crosschecked_file_path.get()):
+                            with open(file, "rb") as source_file:
+                                with open("%s\\%s" % (self.entry_export_crosschecked_file_path.get(), filename), "wb") as dest_file:
+                                    dest_file.write(source_file.read())
 
                 index += 1 # On n'utilise pas d'enumerate parce que ce compteur ne doit être incrémenter que si la condition est remplie
 
@@ -1106,6 +1129,23 @@ class Main:
 
         Checkbutton(label_action_bar, text=self.translate("Uniquement si il contient des screenshots"), variable = self.variable_search_screenshot_only).grid(row=2, column=1, columnspan=3)
         Checkbutton(label_action_bar, text=self.translate("Uniquement si il contient des replays"), variable = self.variable_search_replay_only).grid(row=3, column=1, columnspan=3)
+
+        frame_export_crosschecked_file = Frame(label_action_bar)
+        frame_export_crosschecked_file.grid(row = 4, column = 1, columnspan = 3)
+
+        Checkbutton(frame_export_crosschecked_file, text=self.translate("Exporter les fichiers recoupées dans un dossier"),
+                    variable=self.variable_export_crosschecked_file).grid(row=1, column=1, padx = 5)
+        self.entry_export_crosschecked_file_path = Entry(frame_export_crosschecked_file, width = 30, font = ("System", 10), textvariable = "")
+        self.entry_export_crosschecked_file_path.grid(row = 1, column = 2)
+
+        def select_directory():
+            path = filedialog.askdirectory()
+            if path:
+                self.entry_export_crosschecked_file_path.delete(0, END)
+                self.entry_export_crosschecked_file_path.insert(0, path)
+
+        Button(frame_export_crosschecked_file, text = "...", relief = RIDGE, command = select_directory).grid(row = 1, column = 3)
+
 
         progressbar_action_bar = ttk.Progressbar(toplevel_messagebox_search)
 
@@ -1280,6 +1320,33 @@ class Main:
 
         self.progressbar_messagebox_ftp = ttk.Progressbar(toplevel_messagebox_ftp)
 
+    def load_item_texture(self, item):
+        if "minecraft:" in item:
+            if not(item in self.texture_assets_tk):
+                if "_slab" in item: item_name = item.split(":")[-1].split("_slab")[0]
+                elif "_stairs" in item: item_name = item.split(":")[-1].split("_stairs")[0]
+                elif "_fence" in item: item_name = item.split(":")[-1].split("_fence")[0]
+                else: item_name = item.split(":")[-1]
+
+                if "smooth" in item: item_name = item_name.split("smooth_")[1]
+
+                item_texture_path = "assets\\item\\%s.png" % item_name
+                item_texture_path_side = "assets\\item\\%s_side.png" % item_name
+                item_texture_path_front = "assets\\item\\%s_front.png" % item_name
+                item_texture_path_planks = "assets\\item\\%s_planks.png" % item_name
+
+                if os.path.exists(item_texture_path): image = Image.open(item_texture_path)
+                elif os.path.exists(item_texture_path_side): image = Image.open(item_texture_path_side)
+                elif os.path.exists(item_texture_path_front): image = Image.open(item_texture_path_front)
+                elif os.path.exists(item_texture_path_planks): image = Image.open(item_texture_path_planks)
+                elif "spawn_egg" in item: image = Image.open("assets\\item\\spawn_egg.png")
+                else: image = self.item_not_found_image
+
+                self.texture_assets[item] = image
+                self.texture_assets_tk[item] = ImageTk.PhotoImage(image.resize((46, 46)))
+
+        else: return -1
+
     def player_nbt_inventory(self, player_uuid, ftp_log_list):
         toplevel_messagebox_player_inventory = Toplevel(self.root)  # Nouvelle fenêtre pour ne pas surchargé l'interface principal
         toplevel_messagebox_player_inventory.grab_set()  # On empêche d'intéragir avec la fenêtre principal
@@ -1293,9 +1360,6 @@ class Main:
         player_inventory_image = player_inventory_image.resize((500, round(500 * ratio)))
         self.player_inventory_image_tk = ImageTk.PhotoImage(player_inventory_image)
         width_inventory, height_inventory = player_inventory_image.width, player_inventory_image.height
-
-        item_not_found_image = Image.open("assets\\not_found_icon.png").resize((46,46))
-        item_not_found_image_tk = ImageTk.PhotoImage(item_not_found_image)
 
         container_9x3_image = Image.open("assets\\container_9x3.png").resize((500, 250))
         self.container_9x3_image_tk = ImageTk.PhotoImage(container_9x3_image)
@@ -1331,7 +1395,6 @@ class Main:
         label_item_information = Label(toplevel_messagebox_player_inventory, text = self.translate("Cliquer sur un objet pour voir ses statistiques"), font = ("System", 12))
         label_item_information.grid(row = 5, column = 1)
 
-        self.texture_assets = {}
         nbt_data = None
         if not(ftp_log_list): nbt_data = nbt.nbt.NBTFile(self.player_list_path + player_uuid)
         else:
@@ -1353,29 +1416,6 @@ class Main:
             toplevel_messagebox_player_inventory.destroy()
             return -1
 
-        def load_item_texture(item):
-            if "minecraft:" in item:
-                if not(item in self.texture_assets):
-                    if "_slab" in item: item_name = item.split(":")[-1].split("_slab")[0]
-                    elif "_stairs" in item: item_name = item.split(":")[-1].split("_stairs")[0]
-                    elif "_fence" in item: item_name = item.split(":")[-1].split("_fence")[0]
-                    else: item_name = item.split(":")[-1]
-
-                    if "smooth" in item: item_name = item_name.split("smooth_")[1]
-
-                    item_texture_path = "assets\\item\\%s.png" % item_name
-                    item_texture_path_side = "assets\\item\\%s_side.png" % item_name
-                    item_texture_path_front = "assets\\item\\%s_front.png" % item_name
-                    item_texture_path_planks = "assets\\item\\%s_planks.png" % item_name
-
-                    if os.path.exists(item_texture_path): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path).resize((46,46)))
-                    elif os.path.exists(item_texture_path_side): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path_side).resize((46,46)))
-                    elif os.path.exists(item_texture_path_front): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path_front).resize((46, 46)))
-                    elif os.path.exists(item_texture_path_planks): self.texture_assets[item] = ImageTk.PhotoImage(Image.open(item_texture_path_planks).resize((46, 46)))
-                    elif "spawn_egg" in item: self.texture_assets[item] = ImageTk.PhotoImage(Image.open("assets\\item\\spawn_egg.png").resize((46, 46)))
-                    else: self.texture_assets[item] = item_not_found_image_tk
-            else: return -1
-
         def show_more_information(item):
             if "tag" in item:
                 Tags = "\n"
@@ -1385,7 +1425,7 @@ class Main:
                 if "Enchantments" in item["tag"]:
                     Tags += self.translate("Enchanté avec : ") + "\n"
                     try:
-                        for enchant in item["tag"]["Enchantments"]: Tags += "- %s (" + self.translate("niveau") + " %i)\n" % (enchant["id"].value, enchant["lvl"].value)
+                        for enchant in item["tag"]["Enchantments"]: Tags += "- %s (" % enchant["id"].value + self.translate("niveau") + " %i)\n" % enchant["lvl"].value
                     except: Tags += "- ?\n"
                 if "display" in item["tag"]:
                     if "Name" in item["tag"]["display"]:
@@ -1404,10 +1444,10 @@ class Main:
                         canvas_player_shulker.create_image(width_container_9x3 // 2, height_container_9x3 // 2, image=self.container_9x3_image_tk)
                         for index, container_item in enumerate(item["tag"]["BlockEntityTag"]["Items"].tags):
                             try:
-                                if not(load_item_texture(container_item["id"].value) == -1):
+                                if not(self.load_item_texture(container_item["id"].value) == -1):
                                     canvas_player_shulker.create_image(
                                         *self.slot_id_to_canvas_container_9x3[container_item["Slot"].value],
-                                        image=self.texture_assets[container_item["id"].value], anchor="nw",
+                                        image=self.texture_assets_tk[container_item["id"].value], anchor="nw",
                                         tags="slot-shulker-%i" % index)
 
                                     canvas_player_shulker.create_text(
@@ -1430,8 +1470,8 @@ class Main:
 
         for index, item in enumerate(nbt_data["Inventory"].tags):
             try:
-                if not(load_item_texture(item["id"].value) == -1):
-                    canvas_player_inventory.create_image(*self.slot_id_to_canvas_inventory[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw", tags = "slot-inventory-%i" % index)
+                if not(self.load_item_texture(item["id"].value) == -1):
+                    canvas_player_inventory.create_image(*self.slot_id_to_canvas_inventory[item["Slot"].value], image = self.texture_assets_tk[item["id"].value], anchor="nw", tags = "slot-inventory-%i" % index)
                     canvas_player_inventory.create_text(*[x + 48 for x in self.slot_id_to_canvas_inventory[item["Slot"].value]],
                                                         text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white", tags = "slot-inventory-%i" % index)
                     canvas_player_inventory.tag_bind("slot-inventory-%i" % index, "<Button-1>", lambda e, item = item: show_more_information(item))
@@ -1440,8 +1480,8 @@ class Main:
 
         for index, item in enumerate(nbt_data["EnderItems"].tags):
             try:
-                if not(load_item_texture(item["id"].value) == -1):
-                    canvas_player_enderchest.create_image(*self.slot_id_to_canvas_container_9x3[item["Slot"].value], image = self.texture_assets[item["id"].value], anchor="nw", tags = "slot-enderchest-%i" % index)
+                if not(self.load_item_texture(item["id"].value) == -1):
+                    canvas_player_enderchest.create_image(*self.slot_id_to_canvas_container_9x3[item["Slot"].value], image = self.texture_assets_tk[item["id"].value], anchor="nw", tags = "slot-enderchest-%i" % index)
                     canvas_player_enderchest.create_text(*[x + 48 for x in self.slot_id_to_canvas_container_9x3[item["Slot"].value]],
                                                          text = str(item["Count"].value), font = ("System", 18), anchor="se", fill = "white", tags = "slot-enderchest-%i" % index)
                     canvas_player_enderchest.tag_bind("slot-enderchest-%i" % index, "<Button-1>", lambda e, item=item: show_more_information(item))
@@ -1503,6 +1543,99 @@ class Main:
                                                            fill = "gray70", dash=(100, 1), width = 2)
 
             Label(toplevel_messagebox_global_statistic, text = self.translate("Nombre total de log : ") + "%i" % self.total_log).grid(row = 2, column = 1)
+
+        if self.world_name:
+            map_size = 512
+            self.map_image = Image.new("RGB", (map_size, map_size), (255, 255, 255))
+
+            frame_map_global_statistic = Frame(toplevel_messagebox_global_statistic)
+            frame_map_global_statistic.grid(row=3, column=1, sticky="NEWS")
+
+            scrollbar_canvas_map_x = Scrollbar(frame_map_global_statistic, orient="horizontal")
+            scrollbar_canvas_map_y = Scrollbar(frame_map_global_statistic, orient="vertical")
+            canvas_messagebox_global_statistic_map = Canvas(frame_map_global_statistic, width=512, height=512,
+                                                            yscrollcommand=scrollbar_canvas_map_y.set, xscrollcommand=scrollbar_canvas_map_x.set)
+            scrollbar_canvas_map_x.config(command=canvas_messagebox_global_statistic_map.xview)
+            scrollbar_canvas_map_y.config(command=canvas_messagebox_global_statistic_map.yview)
+            canvas_messagebox_global_statistic_map.grid(row=1, column=1, sticky="NEWS")
+            scrollbar_canvas_map_x.grid(row=2, column=1, sticky="NEWS")
+            scrollbar_canvas_map_y.grid(row=1, column=2, sticky="NEWS")
+
+            self.zoom_factor_map = 1.0
+
+            self.map_image_tk = ImageTk.PhotoImage(self.map_image)
+            self.map_image_tag = canvas_messagebox_global_statistic_map.create_image(map_size / 2, map_size / 2, image=self.map_image_tk)
+
+            def update_image(zoom_x=None, zoom_y=None):
+                try:
+                    computed_map_size = round(map_size * self.zoom_factor_map)
+
+                    computed_map_image = self.map_image.resize((computed_map_size, computed_map_size))
+                    self.map_image_tk = ImageTk.PhotoImage(computed_map_image)
+                    canvas_messagebox_global_statistic_map.itemconfig(self.map_image_tag, image=self.map_image_tk)
+
+                    if zoom_x != None and zoom_y != None:
+                        canvas_messagebox_global_statistic_map.move(self.map_image_tag, -zoom_x, -zoom_y)
+
+                    canvas_messagebox_global_statistic_map.config(scrollregion=canvas_messagebox_global_statistic_map.bbox("all"))
+                except: return -1
+
+            def zoomer(event):
+
+                if event.delta > 0:
+                    zoom_x = (event.x - (map_size / 2)) / self.zoom_factor_map
+                    zoom_y = (event.y - (map_size / 2)) / self.zoom_factor_map
+                    self.zoom_factor_map *= 1.1
+                    update_image(zoom_x, zoom_y)
+
+                else:
+                    self.zoom_factor_map *= 0.9
+                    update_image()
+
+            def move(event): canvas_messagebox_global_statistic_map.scan_dragto(event.x, event.y, gain=1)
+            def start_move(event): canvas_messagebox_global_statistic_map.scan_mark(event.x, event.y)
+
+            def search():
+                global image_tag, map_image
+
+                for region_file in glob.iglob(self.path + "\\" + self.world_name + "\\region\\*.mca"):
+                    region_data = anvil.Region.from_file(region_file)
+                    for chunk_x in range(32):
+                        for chunk_z in range(32):
+                            t1 = time.time()
+                            try:
+                                chunk_data = region_data.get_chunk(chunk_x, chunk_z)
+
+                                for block_x in range(16):
+                                    for block_z in range(16):
+                                        for block_y in range(255, 0, -1):
+                                            block = chunk_data.get_block(block_x, block_y, block_z)
+                                            if block.id == "air": continue
+
+                                            self.load_item_texture(block.namespace + ":" + block.id)
+                                            color = self.texture_assets[block.namespace + ":" + block.id]
+
+                                            color = color.resize((1, 1)).getpixel((0, 0))
+
+                                            coord_x = chunk_data.x * 16 + block_x
+                                            coord_z = chunk_data.z * 16 + block_z
+
+                                            self.map_image.putpixel((coord_x, coord_z), color)
+                                            break
+
+                                if update_image() == -1: return
+
+                            except Exception as e: 
+                                print(str(e))
+                                print("Erreur sur le chunk : %i, %i en région %s" % (chunk_x, chunk_z, region_file))
+
+            canvas_messagebox_global_statistic_map.bind("<MouseWheel>", zoomer)
+            canvas_messagebox_global_statistic_map.bind("<ButtonPress-1>", start_move)
+            canvas_messagebox_global_statistic_map.bind("<B1-Motion>", move)
+
+            thread_mapping_chunk = Thread(target=search)
+            thread_mapping_chunk.setDaemon(True)
+            thread_mapping_chunk.start()
 
     def change_language_interface(self):
         toplevel_language_selector = Toplevel(self.root)  # Nouvelle fenêtre pour ne pas surchargé l'interface principal
