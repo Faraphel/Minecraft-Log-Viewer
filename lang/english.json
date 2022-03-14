@@ -101,7 +101,7 @@
   "Impossible de créer un fichier option. Veuillez lancer le programme en mode administrateur": "Unable to create an option file. Please run the program in administrator mode",
   "Tout les logs": "Every logs",
   "Rechercher les connexions à un serveur": "Research connexion to a server",
-  "Rechercher un pseudo, un mot, un terme, une phrase": "Research a username, a term, a sentence":,
+  "Rechercher un pseudo, un mot, un terme, une phrase": "Research a username, a term, a sentence:",
   "Ancien": "Old",
-  "Exporter les fichiers recoupées dans un dossier": "Export cross-checked files in a folder",
+  "Exporter les fichiers recoupées dans un dossier": "Export cross-checked files in a folder"
 }
